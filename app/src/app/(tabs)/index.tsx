@@ -11,7 +11,7 @@ import { MonthTotalCard } from '@/components/month-total-card';
 import { PendingBanner } from '@/components/pending-banner';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { formatBaht } from '@/lib/amount';
-import { describeError, getSummary } from '@/lib/api';
+import { describeError, getCategories, getSummary } from '@/lib/api';
 import { addMonths, monthKey, THAI_MONTHS_SHORT } from '@/lib/date';
 import type { Summary } from '@/lib/types';
 
@@ -69,6 +69,8 @@ export default function SummaryScreen() {
   useFocusEffect(
     useCallback(() => {
       load();
+      // อุ่นแคชหมวดหมู่ไว้ตอนออนไลน์ — ออฟไลน์ทีหลังหน้าเงินสดยังเลือกหมวดได้
+      getCategories().catch(() => {});
     }, [load]),
   );
 

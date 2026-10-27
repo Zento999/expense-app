@@ -32,7 +32,10 @@ export default function CashScreen() {
         // หมวดล่าสุดที่เคยใช้ ถ้าไม่มี (หรือถูกลบไปแล้ว) ใช้หมวดแรก
         setCategoryId(cats.some((c) => c.id === lastId) ? lastId : (cats[0]?.id ?? null));
       },
-      () => setLoadError(true),
+      (e) => {
+        console.warn('[cash] load categories', e); // ดูสาเหตุได้ในหน้าต่าง Metro
+        setLoadError(true);
+      },
     );
   }
 

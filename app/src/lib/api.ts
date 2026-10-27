@@ -15,6 +15,19 @@ import type {
 
 export type ConnectionStatus = 'ok' | 'not-configured' | 'unreachable' | 'bad-token';
 
+/**
+ * ติดต่อเซิร์ฟเวอร์ไม่ได้เลย (เน็ตหลุด / คอมปิด / หมดเวลา) — ไม่มีคำตอบจากเซิร์ฟเวอร์
+ * ห่อทุก error ที่ fetch() โยนออกมาเป็นคลาสนี้ เพราะ expo/fetch ไม่ได้โยน TypeError แบบเว็บ
+ * แต่โยน FetchError (extends Error ธรรมดา) — เช็คชนิดตรงต้นทางแน่นอนกว่าเดาจากข้อความ
+ */
+export class NetworkError extends Error {
+  name = 'NetworkError';
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.cause = cause;
+  }
+}
+
 /** error จาก API พร้อม status — หน้าจอใช้แยกข้อความ เช่น 503 = ยังไม่ได้ตั้ง AI */
 export class ApiError extends Error {
   constructor(
@@ -34,11 +47,16 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}, timeoutM
   if (!serverUrl) throw new Error('ยังไม่ได้ตั้งค่าเซิร์ฟเวอร์');
   // body เป็น JSON string → ใส่ Content-Type เอง / เป็น FormData → ปล่อยให้ fetch ใส่ boundary ให้
   const jsonHeader: Record<string, string> = typeof init.body === 'string' ? { 'Content-Type': 'application/json' } : {};
-  const res = await fetch(`${serverUrl}${path}`, {
-    ...init,
-    headers: { ...jsonHeader, 'X-App-Token': appToken, ...init.headers },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${serverUrl}${path}`, {
+      ...init,
+      headers: { ...jsonHeader, 'X-App-Token': appToken, ...init.headers },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (e) {
+    throw new NetworkError(e); // ไม่มีคำตอบกลับมาเลย = ปัญหาการเชื่อมต่อ
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new ApiError(res.status, typeof body.detail === 'string' ? body.detail : res.statusText);
@@ -123,10 +141,9 @@ export async function uploadImage(bytes: Uint8Array): Promise<string> {
   return upload_id;
 }
 
-/** ติดต่อเซิร์ฟเวอร์ไม่ได้เลย (เน็ตหลุด / คอมปิด / หมดเวลา) — ต่างจากเซิร์ฟเวอร์ตอบ error กลับมา */
+/** ติดต่อเซิร์ฟเวอร์ไม่ได้เลย — ต่างจากเซิร์ฟเวอร์ตอบ error กลับมา (ApiError) */
 export function isNetworkError(e: unknown): boolean {
-  if (e instanceof ApiError) return false;
-  return e instanceof TypeError || (e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError'));
+  return e instanceof NetworkError;
 }
 
 /** ข้อความ error ที่บอกสาเหตุจริง — เน็ตหลุด กับ เซิร์ฟเวอร์ปฏิเสธ ต้องแก้คนละแบบ */
