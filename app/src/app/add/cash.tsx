@@ -9,7 +9,7 @@ import { CategoryGrid } from '@/components/category-grid';
 import { Numpad } from '@/components/numpad';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { formatTyped, isValidAmount, pressKey, toApiAmount, type NumpadKey } from '@/lib/amount';
-import { createExpense, getCategories } from '@/lib/api';
+import { createExpense, describeError, getCategories } from '@/lib/api';
 import { dayLabel, withCurrentTime } from '@/lib/date';
 import { getLastCategoryId, setLastCategoryId } from '@/lib/prefs';
 import type { Category } from '@/lib/types';
@@ -51,9 +51,7 @@ export default function CashScreen() {
       value: day,
       mode: 'date',
       maximumDate: new Date(), // บันทึกรายจ่ายล่วงหน้าไม่ได้
-      onChange: (event, selected) => {
-        if (event.type === 'set' && selected) setDay(selected);
-      },
+      onValueChange: (_event, selected) => setDay(selected),
     });
   }
 
@@ -75,8 +73,8 @@ export default function CashScreen() {
       await setLastCategoryId(categoryId);
       ToastAndroid.show(`บันทึก ฿${formatTyped(toApiAmount(amount))} แล้ว`, ToastAndroid.SHORT);
       router.back();
-    } catch {
-      ToastAndroid.show('บันทึกไม่สำเร็จ — เช็คการเชื่อมต่อแล้วลองใหม่', ToastAndroid.LONG);
+    } catch (e) {
+      ToastAndroid.show(describeError(e, 'บันทึก'), ToastAndroid.LONG);
       setSaving(false);
     }
   }

@@ -10,7 +10,7 @@ import { AmountSheet } from '@/components/amount-sheet';
 import { CategoryGrid } from '@/components/category-grid';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { formatTyped, isValidAmount, toApiAmount } from '@/lib/amount';
-import { ApiError, createExpense, getCategories, readUpload, uploadImage } from '@/lib/api';
+import { ApiError, createExpense, describeError, getCategories, readUpload, uploadImage } from '@/lib/api';
 import { dateTimeLabel } from '@/lib/date';
 import { pickImage, type ImageSource } from '@/lib/images';
 import { getLastCategoryId, setLastCategoryId } from '@/lib/prefs';
@@ -33,6 +33,7 @@ function readErrorMessage(e: unknown): string {
     if (e.status === 422) return 'AI อ่านรูปนี้ไม่ออก — กรอกเองได้เลย';
     if (e.status === 429) return 'AI ยุ่งอยู่ — กรอกเองได้เลย';
   }
+  console.warn('[AI read]', e);
   return 'AI อ่านไม่สำเร็จ — กรอกเองได้เลย';
 }
 
@@ -80,8 +81,8 @@ export default function ScanScreen() {
         }
         setPhase('review');
       },
-      () => {
-        toast('อัปโหลดรูปไม่สำเร็จ — เช็คการเชื่อมต่อแล้วลองใหม่');
+      (e) => {
+        toast(describeError(e, 'อัปโหลดรูป'));
         setImageUri(null);
         setPhase('pick');
       },
@@ -137,15 +138,13 @@ export default function ScanScreen() {
       value: spentAt,
       mode: 'date',
       maximumDate: new Date(),
-      onChange: (event, day) => {
-        if (event.type !== 'set' || !day) return;
+      // เลือกวันเสร็จ → เปิดตัวเลือกเวลาต่อ (กดยกเลิก = ไม่เปลี่ยนอะไร)
+      onValueChange: (_event, day) => {
         DateTimePickerAndroid.open({
           value: day,
           mode: 'time',
           is24Hour: true,
-          onChange: (e, time) => {
-            if (e.type === 'set' && time) setSpentAt(time);
-          },
+          onValueChange: (_e, time) => setSpentAt(time),
         });
       },
     });
@@ -176,8 +175,8 @@ export default function ScanScreen() {
       await setLastCategoryId(categoryId);
       ToastAndroid.show(`บันทึก ฿${formatTyped(toApiAmount(amount))} แล้ว`, ToastAndroid.SHORT);
       router.back();
-    } catch {
-      toast('บันทึกไม่สำเร็จ — เช็คการเชื่อมต่อแล้วลองใหม่');
+    } catch (e) {
+      toast(describeError(e, 'บันทึก'));
       setSaving(false);
     }
   }

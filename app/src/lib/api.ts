@@ -1,3 +1,5 @@
+import { File } from 'expo-file-system';
+
 import { loadSettings } from '@/lib/settings';
 import type { Category, Expense, ExpenseCreate, ReadResult, ScanKind } from '@/lib/types';
 
@@ -57,10 +59,19 @@ export function createExpense(body: ExpenseCreate) {
 /** อัปโหลดรูปจากเครื่อง (uri ของไฟล์) → upload_id */
 export async function uploadImage(uri: string): Promise<string> {
   const form = new FormData();
-  // React Native อ่านไฟล์จาก uri ให้เองตอนส่ง (ต่างจากเว็บที่ต้องเป็น Blob)
-  form.append('file', { uri, name: 'image.jpg', type: 'image/jpeg' } as unknown as Blob);
+  // SDK 58 ใช้ expo/fetch เป็น fetch หลัก ซึ่งไม่รองรับแบบเก่า { uri, name, type }
+  // ต้องส่งเป็น File ของ expo-file-system (เป็น Blob จริง อ่าน bytes ได้)
+  form.append('file', new File(uri));
   const { upload_id } = await apiFetch<{ upload_id: string }>('/api/uploads', { method: 'POST', body: form });
   return upload_id;
+}
+
+/** ข้อความ error ที่บอกสาเหตุจริง — เน็ตหลุด กับ เซิร์ฟเวอร์ปฏิเสธ ต้องแก้คนละแบบ */
+export function describeError(e: unknown, action: string): string {
+  console.warn(`[${action}]`, e); // ดูรายละเอียดเต็มได้ในหน้าต่าง Metro บนคอม
+  if (e instanceof ApiError) return `${action}ไม่สำเร็จ (HTTP ${e.status}: ${e.detail})`;
+  if (e instanceof TypeError) return `${action}ไม่สำเร็จ — ติดต่อเซิร์ฟเวอร์ไม่ได้ เช็คการเชื่อมต่อ`;
+  return `${action}ไม่สำเร็จ — ${e instanceof Error ? e.message : 'ไม่ทราบสาเหตุ'}`;
 }
 
 export function readUpload(uploadId: string, kind: ScanKind) {
