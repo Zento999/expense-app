@@ -27,17 +27,3 @@ export async function pickImage(source: ImageSource): Promise<PickedImage | null
   if (!base64) throw new Error('อ่านรูปไม่สำเร็จ');
   return { uri, bytes: Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)) };
 }
-
-// ส่งรูปจาก bottom sheet ไปหน้าอ่านสลิป: route params ส่งได้แค่ข้อความสั้นๆ
-// เลยส่ง uri ไปทาง params แล้วฝาก bytes ไว้ที่นี่ให้หน้าปลายทางมารับ (รับแล้วลบทิ้ง)
-const pending = new Map<string, Uint8Array>();
-
-export function holdPickedImage(image: PickedImage) {
-  pending.set(image.uri, image.bytes);
-}
-
-export function takePickedImage(uri: string): PickedImage | null {
-  const bytes = pending.get(uri);
-  pending.delete(uri);
-  return bytes ? { uri, bytes } : null;
-}

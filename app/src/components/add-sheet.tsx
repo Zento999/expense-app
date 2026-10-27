@@ -1,10 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { Modal, Pressable, StyleSheet, Text, ToastAndroid, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
-import { holdPickedImage, pickImage, type ImageSource } from '@/lib/images';
 
 type Option = {
   key: 'slip' | 'receipt' | 'cash';
@@ -20,29 +19,20 @@ const OPTIONS: Option[] = [
   { key: 'cash', title: 'เงินสด', subtitle: 'พิมพ์ยอดเอง', icon: 'cash-outline', color: Colors.honey },
 ];
 
-// สลิปส่วนใหญ่เซฟอยู่ในแกลเลอรีแล้ว / บิลกระดาษต้องถ่ายใหม่
-const SOURCE: Record<'slip' | 'receipt', ImageSource> = { slip: 'library', receipt: 'camera' };
-
 type Props = { visible: boolean; onClose: () => void };
 
 /** Bottom sheet เลือกประเภทรายจ่าย — เลื่อนขึ้นจากล่าง ปุ่มอยู่ในระยะนิ้วโป้ง */
 export function AddSheet({ visible, onClose }: Props) {
   const insets = useSafeAreaInsets();
 
-  async function onPick(option: Option) {
+  function onPick(option: Option) {
     onClose();
+    // แค่เปิดหน้า — หน้าอ่านสลิปจะเปิดแกลเลอรี/กล้องเองหลังขึ้นจอเสร็จ
+    // (เปิดตัวเลือกรูปตอน bottom sheet กำลังปิด ทำให้ Android ทิ้งรูปที่เลือกครั้งแรก)
     if (option.key === 'cash') {
       router.push('/add/cash');
-      return;
-    }
-    // เปิดแกลเลอรี/กล้องเลย แล้วค่อยไปหน้าอ่าน — แตะน้อยลง 1 ครั้ง
-    try {
-      const image = await pickImage(SOURCE[option.key]);
-      if (!image) return;
-      holdPickedImage(image);
-      router.push({ pathname: '/add/scan', params: { kind: option.key, uri: image.uri } });
-    } catch (e) {
-      ToastAndroid.show(e instanceof Error ? e.message : 'เปิดรูปไม่ได้', ToastAndroid.LONG);
+    } else {
+      router.push({ pathname: '/add/scan', params: { kind: option.key } });
     }
   }
 

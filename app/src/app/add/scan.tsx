@@ -9,15 +9,19 @@ import { ExpenseForm, type FormValues } from '@/components/expense-form';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { formatTyped } from '@/lib/amount';
 import { ApiError, createExpense, describeError, readUpload, uploadImage } from '@/lib/api';
-import { pickImage, takePickedImage, type ImageSource, type PickedImage } from '@/lib/images';
+import { pickImage, type ImageSource, type PickedImage } from '@/lib/images';
 import { setLastCategoryId } from '@/lib/prefs';
 import type { ReadResult, ScanKind } from '@/lib/types';
 
 type Phase = 'pick' | 'reading' | 'review';
 
-const TEXT: Record<ScanKind, { title: string; payee: string; placeholder: string; docName: string }> = {
-  slip: { title: 'สลิปโอนเงิน', payee: 'จ่ายให้', placeholder: 'ชื่อผู้รับ / ร้าน', docName: 'สลิป' },
-  receipt: { title: 'บิล / ใบเสร็จ', payee: 'ร้านค้า', placeholder: 'ชื่อร้าน', docName: 'บิล' },
+const TEXT: Record<
+  ScanKind,
+  { title: string; payee: string; placeholder: string; docName: string; source: ImageSource }
+> = {
+  // สลิปส่วนใหญ่เซฟอยู่ในแกลเลอรีแล้ว / บิลกระดาษต้องถ่ายใหม่
+  slip: { title: 'สลิปโอนเงิน', payee: 'จ่ายให้', placeholder: 'ชื่อผู้รับ / ร้าน', docName: 'สลิป', source: 'library' },
+  receipt: { title: 'บิล / ใบเสร็จ', payee: 'ร้านค้า', placeholder: 'ชื่อร้าน', docName: 'บิล', source: 'camera' },
 };
 
 function toast(message: string) {
@@ -35,15 +39,12 @@ function readErrorMessage(e: unknown): string {
 }
 
 export default function ScanScreen() {
-  // uri = รูปที่เลือกมาแล้วจาก bottom sheet (bytes ฝากไว้ใน images.ts)
-  // ถ้าไม่มี (หรือหาย เช่นหลัง reload แอป) จะเริ่มที่หน้าเลือกรูป
-  const params = useLocalSearchParams<{ kind?: string; uri?: string }>();
+  const params = useLocalSearchParams<{ kind?: string }>();
   const kind: ScanKind = params.kind === 'receipt' ? 'receipt' : 'slip';
   const text = TEXT[kind];
-  const [initialImage] = useState(() => (typeof params.uri === 'string' ? takePickedImage(params.uri) : null));
 
-  const [phase, setPhase] = useState<Phase>(initialImage ? 'reading' : 'pick');
-  const [imageUri, setImageUri] = useState<string | null>(initialImage?.uri ?? null);
+  const [phase, setPhase] = useState<Phase>('pick');
+  const [imageUri, setImageUri] = useState<string | null>(null);
   const [uploadId, setUploadId] = useState<string | null>(null);
   const [ai, setAi] = useState<ReadResult | null>(null);
   const [saving, setSaving] = useState(false);
@@ -72,19 +73,21 @@ export default function ScanScreen() {
     );
   }
 
-  /** ปุ่มในหน้าเลือกรูป (กรณีเปิดหน้านี้มาโดยยังไม่มีรูป หรืออัปโหลดพลาดแล้วเลือกใหม่) */
-  async function start(source: ImageSource) {
-    let image: PickedImage | null;
-    try {
-      image = await pickImage(source);
-    } catch (e) {
-      toast(e instanceof Error ? e.message : 'เปิดรูปไม่ได้');
-      return;
-    }
-    if (!image) return; // ยกเลิก → อยู่หน้าเลือกรูปต่อ
-    setImageUri(image.uri);
-    setPhase('reading');
-    processImage(image);
+  /** เปิดแกลเลอรี/กล้อง → ได้รูปแล้วเริ่มอ่าน (setState อยู่ใน callback หลังเลือกรูปเสร็จ) */
+  function start(source: ImageSource, { closeOnCancel = false } = {}) {
+    pickImage(source).then(
+      (image) => {
+        if (!image) {
+          // เปิดอัตโนมัติแล้วกดยกเลิก = ไม่อยากบันทึกแล้ว → ปิดหน้านี้เลย
+          if (closeOnCancel) router.back();
+          return;
+        }
+        setImageUri(image.uri);
+        setPhase('reading');
+        processImage(image);
+      },
+      (e) => toast(e instanceof Error ? e.message : 'เปิดรูปไม่ได้'),
+    );
   }
 
   function enterManually() {
@@ -94,8 +97,8 @@ export default function ScanScreen() {
   }
 
   useEffect(() => {
-    if (initialImage) processImage(initialImage);
-    // ทำครั้งเดียวตอนเปิดหน้า
+    // เปิดหน้าเสร็จแล้วค่อยเปิดตัวเลือกรูป (ครั้งเดียว) — ปุ่มในหน้านี้ยังกดเลือกใหม่ได้
+    start(text.source, { closeOnCancel: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
