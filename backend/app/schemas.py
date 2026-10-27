@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, computed_field, field_validator
 
 from .config import BKK
+from .storage import UPLOAD_ID_PATTERN
 
 # รับ/เก็บเป็น Decimal (แม่นยำ) แต่ส่งออก JSON เป็นตัวเลขธรรมดา ให้แอปใช้ง่าย
 Money = Annotated[
@@ -40,6 +41,7 @@ class ExpenseCreate(BaseModel):
     category_id: int
     payee: str | None = Field(default=None, max_length=200)
     note: str | None = Field(default=None, max_length=1000)
+    upload_id: str | None = Field(default=None, pattern=UPLOAD_ID_PATTERN)  # จาก POST /api/uploads
 
     _tz = field_validator("spent_at")(_assume_bkk)
 

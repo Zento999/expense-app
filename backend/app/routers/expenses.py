@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.responses import FileResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -8,6 +9,7 @@ from ..config import BKK
 from ..deps import get_db, require_token
 from ..models import Category, Expense
 from ..schemas import ExpenseCreate, ExpenseList, ExpenseOut, ExpenseUpdate
+from ..storage import ImageError, attach, delete_image, image_file
 
 router = APIRouter(prefix="/api/expenses", tags=["expenses"], dependencies=[Depends(require_token)])
 
@@ -69,11 +71,24 @@ def list_expenses(
 @router.post("", response_model=ExpenseOut, status_code=201)
 def create_expense(body: ExpenseCreate, db: Session = Depends(get_db)):
     _check_category(db, body.category_id)
-    expense = Expense(**body.model_dump())
+    expense = Expense(**body.model_dump(exclude={"upload_id"}))
     if expense.spent_at is None:
         expense.spent_at = datetime.now(BKK)
+
+    if body.upload_id:
+        try:
+            expense.image_path = attach(body.upload_id, expense.spent_at)
+        except ImageError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
     db.add(expense)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        # บันทึก DB ไม่สำเร็จ → ลบรูปที่เพิ่งย้ายไป จะได้ไม่มีไฟล์กำพร้า
+        if expense.image_path:
+            delete_image(expense.image_path)
+        raise
     db.refresh(expense)
     return expense
 
@@ -81,6 +96,17 @@ def create_expense(body: ExpenseCreate, db: Session = Depends(get_db)):
 @router.get("/{expense_id}", response_model=ExpenseOut)
 def get_expense(expense_id: int, db: Session = Depends(get_db)):
     return _get_or_404(db, expense_id)
+
+
+@router.get("/{expense_id}/image", response_class=FileResponse)
+def get_expense_image(expense_id: int, thumb: bool = False, db: Session = Depends(get_db)):
+    """รูปสลิป/บิลของรายการนี้ (?thumb=true ได้รูปเล็กสำหรับหน้ารายการ)"""
+    expense = _get_or_404(db, expense_id)
+    path = image_file(expense.image_path, thumb) if expense.image_path else None
+    if path is None or not path.exists():
+        raise HTTPException(status_code=404, detail="no image")
+    # private: ให้มือถือ cache ได้ 1 วัน แต่ห้าม proxy กลางทาง cache
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
 
 
 @router.patch("/{expense_id}", response_model=ExpenseOut)
@@ -103,6 +129,10 @@ def update_expense(expense_id: int, body: ExpenseUpdate, db: Session = Depends(g
 @router.delete("/{expense_id}", status_code=204)
 def delete_expense(expense_id: int, db: Session = Depends(get_db)):
     expense = _get_or_404(db, expense_id)
+    image_path = expense.image_path
     db.delete(expense)
     db.commit()
+    # ลบไฟล์หลัง commit สำเร็จ — ถ้าลบไฟล์ก่อนแล้ว DB พัง รายการจะชี้ไปรูปที่หายไปแล้ว
+    if image_path:
+        delete_image(image_path)
     return Response(status_code=204)
