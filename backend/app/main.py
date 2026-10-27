@@ -1,19 +1,13 @@
-import secrets
-
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI
 from sqlalchemy import text
 
-from .config import settings
 from .db import engine
+from .deps import require_token
+from .routers import categories, expenses
 
 app = FastAPI(title="Expense API")
-
-
-def require_token(x_app_token: str = Header(default="")) -> None:
-    """ทุก endpoint ที่แตะข้อมูลต้องส่ง header X-App-Token ให้ตรงกับใน .env"""
-    # compare_digest: เทียบแบบใช้เวลาเท่ากันเสมอ กันการเดา token จากเวลาตอบกลับ
-    if not secrets.compare_digest(x_app_token, settings.app_token):
-        raise HTTPException(status_code=401, detail="invalid token")
+app.include_router(categories.router)
+app.include_router(expenses.router)
 
 
 @app.get("/health")

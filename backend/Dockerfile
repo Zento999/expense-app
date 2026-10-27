@@ -10,6 +10,9 @@ WORKDIR /code
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY alembic.ini .
+COPY alembic ./alembic
 COPY app ./app
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# อัปเดต schema ให้ล่าสุดก่อนเปิด API ทุกครั้ง (ถ้าล่าสุดอยู่แล้วจะไม่ทำอะไร)
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
