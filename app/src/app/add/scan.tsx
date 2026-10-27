@@ -277,7 +277,14 @@ export default function ScanScreen() {
 
         <View style={styles.labelRow}>
           <Text style={styles.label}>หมวด</Text>
-          <AiMark show={ai?.category_id != null} />
+          {ai?.category_source === 'history' ? (
+            <>
+              <Ionicons name="time-outline" size={14} color={Colors.primary} />
+              <Text style={styles.label}>ตามที่เคยบันทึกร้านนี้</Text>
+            </>
+          ) : (
+            <AiMark show={ai?.category_id != null} />
+          )}
         </View>
         {categories ? (
           <CategoryGrid categories={categories} selectedId={categoryId} onSelect={setCategoryId} />

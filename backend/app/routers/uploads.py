@@ -1,11 +1,13 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..ai import AIError, Kind, read_document
 from ..deps import get_db, require_token
-from ..models import Category
+from ..models import Category, Expense
 from ..storage import MAX_BYTES, ImageError, save_ai_result, save_upload, upload_path
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"], dependencies=[Depends(require_token)])
@@ -23,8 +25,22 @@ class ReadOut(BaseModel):
     spent_at: str | None
     payee: str | None
     category_id: int | None
+    # history = ใช้หมวดเดียวกับที่คุณเคยบันทึกให้ร้านนี้ / ai = AI เดาเอง
+    category_source: Literal["history", "ai"] | None
     note: str | None
     confidence: str
+
+
+def _category_from_history(db: Session, payee: str | None) -> int | None:
+    """หมวดที่ใช้ล่าสุดกับผู้รับ/ร้านนี้ — คุณเคยตัดสินใจไว้แล้ว แม่นกว่าให้ AI เดาใหม่ทุกครั้ง"""
+    if not payee:
+        return None
+    # '  GRAB  Taxi ' กับ 'grab taxi' ถือเป็นร้านเดียวกัน (ตัวเล็ก + ช่องว่างเดียว ทั้งสองฝั่ง)
+    key = " ".join(payee.lower().split())
+    stored = func.lower(func.btrim(func.regexp_replace(Expense.payee, r"\s+", " ", "g")))
+    return db.scalar(
+        select(Expense.category_id).where(stored == key).order_by(Expense.spent_at.desc()).limit(1)
+    )
 
 
 @router.post("", response_model=UploadOut, status_code=201)
@@ -54,13 +70,20 @@ def read_upload(upload_id: str, kind: Kind = "slip", db: Session = Depends(get_d
         raise HTTPException(status_code=e.status_code, detail=str(e)) from e
 
     save_ai_result(upload_id, result)
-    by_name = {c.name: c.id for c in categories}
+
+    category_id = _category_from_history(db, result["payee"])
+    source = "history" if category_id else None
+    if category_id is None:
+        category_id = {c.name: c.id for c in categories}.get(result["category"])
+        source = "ai" if category_id else None
+
     return ReadOut(
         doc_type=result["doc_type"],
         amount=result["amount"],
         spent_at=result["paid_at"],
         payee=result["payee"],
-        category_id=by_name.get(result["category"]),
+        category_id=category_id,
+        category_source=source,
         note=result["note"],
         confidence=result["confidence"],
     )

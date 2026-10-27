@@ -41,6 +41,8 @@ export type ReadResult = {
   spent_at: string | null;
   payee: string | null;
   category_id: number | null;
+  // history = หมวดเดียวกับที่เคยบันทึกให้ร้านนี้ / ai = AI เดาเอง
+  category_source: 'history' | 'ai' | null;
   note: string | null;
   confidence: 'high' | 'medium' | 'low';
 };
