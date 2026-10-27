@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
 import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -27,7 +28,11 @@ export function AddSheet({ visible, onClose }: Props) {
 
   function onPick(option: Option) {
     onClose();
-    // ยังไม่มีหน้าฟอร์ม — จะต่อในบทถัดๆ ไป
+    if (option.key === 'cash') {
+      router.push('/add/cash');
+      return;
+    }
+    // สลิป/บิล ยังไม่มีหน้าฟอร์ม — จะต่อในบทถัดๆ ไป
     Alert.alert(option.title, `หน้านี้จะทำในบทที่ ${option.chapter}`);
   }
 

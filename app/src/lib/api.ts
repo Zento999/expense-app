@@ -1,4 +1,5 @@
 import { loadSettings } from '@/lib/settings';
+import type { Category, Expense, ExpenseCreate } from '@/lib/types';
 
 export type ConnectionStatus = 'ok' | 'not-configured' | 'unreachable' | 'bad-token';
 
@@ -28,4 +29,12 @@ export async function checkConnection(): Promise<ConnectionStatus> {
   } catch {
     return 'unreachable';
   }
+}
+
+export function getCategories() {
+  return apiFetch<Category[]>('/api/categories');
+}
+
+export function createExpense(body: ExpenseCreate) {
+  return apiFetch<Expense>('/api/expenses', { method: 'POST', body: JSON.stringify(body) });
 }

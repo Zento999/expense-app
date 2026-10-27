@@ -5,18 +5,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ConnectionBadge } from '@/components/connection-badge';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
-
-const THAI_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+import { monthLabel } from '@/lib/date';
 
 export default function SummaryScreen() {
-  const now = new Date();
-  const monthLabel = `${THAI_MONTHS[now.getMonth()]} ${now.getFullYear() + 543}`;
 
   return (
     <SafeAreaView style={styles.flex} edges={['top']}>
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.month}>{monthLabel}</Text>
+          <Text style={styles.month}>{monthLabel(new Date())}</Text>
           <Pressable onPress={() => router.push('/settings')} hitSlop={12} accessibilityLabel="ตั้งค่า">
             <Ionicons name="settings-outline" size={24} color={Colors.text} />
           </Pressable>
