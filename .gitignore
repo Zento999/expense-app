@@ -1,0 +1,33 @@
+# ===== ความลับ =====
+.env
+.env.*
+!.env.example
+
+# ===== ข้อมูลการเงิน (ห้ามขึ้น GitHub เด็ดขาด) =====
+data/
+backups/
+*.dump
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# ===== Node / Expo =====
+node_modules/
+.expo/
+dist/
+web-build/
+*.apk
+*.aab
+*.jks
+*.keystore
+credentials.json
+
+# ===== OS / Editor =====
+Thumbs.db
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
