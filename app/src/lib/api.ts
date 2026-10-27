@@ -1,17 +1,32 @@
 import { loadSettings } from '@/lib/settings';
-import type { Category, Expense, ExpenseCreate } from '@/lib/types';
+import type { Category, Expense, ExpenseCreate, ReadResult, ScanKind } from '@/lib/types';
 
 export type ConnectionStatus = 'ok' | 'not-configured' | 'unreachable' | 'bad-token';
+
+/** error จาก API พร้อม status — หน้าจอใช้แยกข้อความ เช่น 503 = ยังไม่ได้ตั้ง AI */
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    public detail: string,
+  ) {
+    super(`HTTP ${status}: ${detail}`);
+  }
+}
 
 /** เรียก API พร้อมแนบ token ให้อัตโนมัติ */
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const { serverUrl, appToken } = await loadSettings();
   if (!serverUrl) throw new Error('ยังไม่ได้ตั้งค่าเซิร์ฟเวอร์');
+  // body เป็น JSON string → ใส่ Content-Type เอง / เป็น FormData → ปล่อยให้ fetch ใส่ boundary ให้
+  const jsonHeader: Record<string, string> = typeof init.body === 'string' ? { 'Content-Type': 'application/json' } : {};
   const res = await fetch(`${serverUrl}${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', 'X-App-Token': appToken, ...init.headers },
+    headers: { ...jsonHeader, 'X-App-Token': appToken, ...init.headers },
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, typeof body.detail === 'string' ? body.detail : res.statusText);
+  }
   return res.status === 204 ? (undefined as T) : res.json();
 }
 
@@ -37,4 +52,17 @@ export function getCategories() {
 
 export function createExpense(body: ExpenseCreate) {
   return apiFetch<Expense>('/api/expenses', { method: 'POST', body: JSON.stringify(body) });
+}
+
+/** อัปโหลดรูปจากเครื่อง (uri ของไฟล์) → upload_id */
+export async function uploadImage(uri: string): Promise<string> {
+  const form = new FormData();
+  // React Native อ่านไฟล์จาก uri ให้เองตอนส่ง (ต่างจากเว็บที่ต้องเป็น Blob)
+  form.append('file', { uri, name: 'image.jpg', type: 'image/jpeg' } as unknown as Blob);
+  const { upload_id } = await apiFetch<{ upload_id: string }>('/api/uploads', { method: 'POST', body: form });
+  return upload_id;
+}
+
+export function readUpload(uploadId: string, kind: ScanKind) {
+  return apiFetch<ReadResult>(`/api/uploads/${uploadId}/read?kind=${kind}`, { method: 'POST' });
 }

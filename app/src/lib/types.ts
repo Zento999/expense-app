@@ -29,4 +29,18 @@ export type ExpenseCreate = {
   spent_at?: string;
   payee?: string | null;
   note?: string | null;
+  upload_id?: string; // จาก POST /api/uploads — แนบรูปไปกับรายการ
+};
+
+export type ScanKind = 'slip' | 'receipt';
+
+/** ผลที่ AI อ่านจากรูป (ทุกช่องเป็น null ได้) */
+export type ReadResult = {
+  doc_type: 'transfer_slip' | 'receipt' | 'other';
+  amount: number | null;
+  spent_at: string | null;
+  payee: string | null;
+  category_id: number | null;
+  note: string | null;
+  confidence: 'high' | 'medium' | 'low';
 };

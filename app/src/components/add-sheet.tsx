@@ -1,9 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, ToastAndroid, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
+import { pickImage, type ImageSource } from '@/lib/images';
 
 type Option = {
   key: 'slip' | 'receipt' | 'cash';
@@ -11,14 +12,16 @@ type Option = {
   subtitle: string;
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
-  chapter: number;
 };
 
 const OPTIONS: Option[] = [
-  { key: 'slip', title: 'สลิปโอนเงิน', subtitle: 'AI อ่านยอดให้', icon: 'receipt-outline', color: Colors.butter, chapter: 6 },
-  { key: 'receipt', title: 'บิล / ใบเสร็จ', subtitle: 'ถ่ายรูปบิล', icon: 'document-text-outline', color: Colors.lemon, chapter: 7 },
-  { key: 'cash', title: 'เงินสด', subtitle: 'พิมพ์ยอดเอง', icon: 'cash-outline', color: Colors.honey, chapter: 4 },
+  { key: 'slip', title: 'สลิปโอนเงิน', subtitle: 'AI อ่านยอดให้', icon: 'receipt-outline', color: Colors.butter },
+  { key: 'receipt', title: 'บิล / ใบเสร็จ', subtitle: 'ถ่ายรูปบิล', icon: 'document-text-outline', color: Colors.lemon },
+  { key: 'cash', title: 'เงินสด', subtitle: 'พิมพ์ยอดเอง', icon: 'cash-outline', color: Colors.honey },
 ];
+
+// สลิปส่วนใหญ่เซฟอยู่ในแกลเลอรีแล้ว / บิลกระดาษต้องถ่ายใหม่
+const SOURCE: Record<'slip' | 'receipt', ImageSource> = { slip: 'library', receipt: 'camera' };
 
 type Props = { visible: boolean; onClose: () => void };
 
@@ -26,14 +29,19 @@ type Props = { visible: boolean; onClose: () => void };
 export function AddSheet({ visible, onClose }: Props) {
   const insets = useSafeAreaInsets();
 
-  function onPick(option: Option) {
+  async function onPick(option: Option) {
     onClose();
     if (option.key === 'cash') {
       router.push('/add/cash');
       return;
     }
-    // สลิป/บิล ยังไม่มีหน้าฟอร์ม — จะต่อในบทถัดๆ ไป
-    Alert.alert(option.title, `หน้านี้จะทำในบทที่ ${option.chapter}`);
+    // เปิดแกลเลอรี/กล้องเลย แล้วค่อยไปหน้าอ่าน — แตะน้อยลง 1 ครั้ง
+    try {
+      const uri = await pickImage(SOURCE[option.key]);
+      if (uri) router.push({ pathname: '/add/scan', params: { kind: option.key, uri } });
+    } catch (e) {
+      ToastAndroid.show(e instanceof Error ? e.message : 'เปิดรูปไม่ได้', ToastAndroid.LONG);
+    }
   }
 
   return (

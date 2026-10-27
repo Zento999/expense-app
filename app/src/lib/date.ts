@@ -20,6 +20,13 @@ export function dayLabel(d: Date): string {
   return `${d.getDate()} ${THAI_MONTHS_SHORT[d.getMonth()]}`;
 }
 
+/** "27 ต.ค. 69 · 14:32" — ปี พ.ศ. 2 หลักแบบในสลิป */
+export function dateTimeLabel(d: Date): string {
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${d.getDate()} ${THAI_MONTHS_SHORT[d.getMonth()]} ${String(d.getFullYear() + 543).slice(-2)} · ${hh}:${mm}`;
+}
+
 /** วันที่จากปฏิทิน + เวลาตอนนี้ — บันทึกย้อนหลังจะได้เรียงตามลำดับที่กดในวันนั้น */
 export function withCurrentTime(day: Date): Date {
   const now = new Date();
