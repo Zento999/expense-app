@@ -7,7 +7,7 @@ export type ImageSource = 'library' | 'camera';
 // 1600px ยังอ่านตัวเลขในสลิปได้ชัด (backend ย่ออีกรอบเหลือ 2000px อยู่แล้ว จึงไม่เสียอะไร)
 const MAX_SIDE = 1600;
 
-/** เลือก/ถ่ายรูป แล้วย่อ คืน uri ของไฟล์ jpg ในเครื่อง (null = ผู้ใช้ยกเลิก) */
+/** เลือก/ถ่ายรูป คืน uri ไว้แสดงตัวอย่าง (null = ผู้ใช้ยกเลิก) */
 export async function pickImage(source: ImageSource): Promise<string | null> {
   if (source === 'camera') {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
@@ -16,14 +16,22 @@ export async function pickImage(source: ImageSource): Promise<string | null> {
   const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 1 };
   const result =
     source === 'camera' ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
-  if (result.canceled) return null;
+  return result.canceled ? null : result.assets[0].uri;
+}
 
-  const { uri, width, height } = result.assets[0];
-  const ctx = ImageManipulator.manipulate(uri);
-  if (Math.max(width, height) > MAX_SIDE) {
-    ctx.resize(width >= height ? { width: MAX_SIDE } : { height: MAX_SIDE });
+/**
+ * ย่อรูปแล้วคืนเป็น bytes ของ JPEG สำหรับอัปโหลด
+ * ขอเป็น base64 จาก ImageManipulator ตรงๆ แทนการอ่านไฟล์ เพราะใน Expo Go
+ * expo-file-system ไม่มีสิทธิ์อ่านไฟล์ที่ ImageManipulator เซฟไว้ (Missing 'READ' permission)
+ */
+export async function toJpegBytes(uri: string): Promise<Uint8Array> {
+  let image = await ImageManipulator.manipulate(uri).renderAsync();
+  if (Math.max(image.width, image.height) > MAX_SIDE) {
+    const ctx = ImageManipulator.manipulate(image);
+    ctx.resize(image.width >= image.height ? { width: MAX_SIDE } : { height: MAX_SIDE });
+    image = await ctx.renderAsync();
   }
-  const image = await ctx.renderAsync();
-  const saved = await image.saveAsync({ format: SaveFormat.JPEG, compress: 0.85 });
-  return saved.uri;
+  const { base64 } = await image.saveAsync({ format: SaveFormat.JPEG, compress: 0.85, base64: true });
+  if (!base64) throw new Error('แปลงรูปไม่สำเร็จ');
+  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
 }

@@ -1,5 +1,4 @@
-import { File } from 'expo-file-system';
-
+import { toJpegBytes } from '@/lib/images';
 import { loadSettings } from '@/lib/settings';
 import type { Category, Expense, ExpenseCreate, ReadResult, ScanKind } from '@/lib/types';
 
@@ -58,10 +57,12 @@ export function createExpense(body: ExpenseCreate) {
 
 /** อัปโหลดรูปจากเครื่อง (uri ของไฟล์) → upload_id */
 export async function uploadImage(uri: string): Promise<string> {
+  const bytes = await toJpegBytes(uri);
   const form = new FormData();
-  // SDK 58 ใช้ expo/fetch เป็น fetch หลัก ซึ่งไม่รองรับแบบเก่า { uri, name, type }
-  // ต้องส่งเป็น File ของ expo-file-system (เป็น Blob จริง อ่าน bytes ได้)
-  form.append('file', new File(uri));
+  // SDK 58 ใช้ expo/fetch เป็น fetch หลัก: ไม่รับแบบเก่า { uri, name, type }
+  // แต่รับ object ที่มี bytes() — ส่ง bytes ที่เตรียมไว้แล้วตรงๆ ไม่ต้องอ่านไฟล์ซ้ำ
+  const part = { name: 'image.jpg', type: 'image/jpeg', bytes: async () => bytes };
+  form.append('file', part as unknown as Blob);
   const { upload_id } = await apiFetch<{ upload_id: string }>('/api/uploads', { method: 'POST', body: form });
   return upload_id;
 }
