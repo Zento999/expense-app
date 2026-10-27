@@ -49,6 +49,28 @@ export type ExpenseQuery = {
   offset?: number;
 };
 
+export type CategoryTotal = {
+  category: Category;
+  total: number;
+  count: number;
+  prev_total: number; // ช่วงเดียวกันของเดือนก่อน
+};
+
+export type MonthTotal = { month: string; total: number };
+
+export type Summary = {
+  month: string;
+  total: number;
+  count: number;
+  is_current: boolean; // เดือนที่ยังไม่จบ
+  days: number; // วันที่ผ่านไปแล้ว (เดือนที่จบแล้ว = ทั้งเดือน)
+  compare_day: number | null; // เทียบกับวันที่ 1..N ของเดือนก่อน (null = เทียบทั้งเดือน)
+  prev_same_period_total: number;
+  prev_month_total: number;
+  by_category: CategoryTotal[];
+  months: MonthTotal[];
+};
+
 export type ScanKind = 'slip' | 'receipt';
 
 /** ผลที่ AI อ่านจากรูป (ทุกช่องเป็น null ได้) */

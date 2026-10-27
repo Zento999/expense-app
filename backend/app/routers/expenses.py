@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from ..config import BKK
 from ..deps import get_db, require_token
 from ..models import Category, Expense
+from ..periods import MONTH_PATTERN, month_range
 from ..schemas import ExpenseCreate, ExpenseList, ExpenseOut, ExpenseUpdate
 from ..storage import ImageError, attach, delete_image, image_file, pop_ai_result
 
@@ -15,14 +16,6 @@ router = APIRouter(prefix="/api/expenses", tags=["expenses"], dependencies=[Depe
 
 # ช่องที่ห้ามเป็น null ตอน PATCH (ส่ง null มา = ผิด ไม่ใช่ "ลบค่า")
 _REQUIRED = {"amount", "spent_at", "category_id"}
-
-
-def _month_range(month: str) -> tuple[datetime, datetime]:
-    """'2026-10' → (1 ต.ค. 00:00, 1 พ.ย. 00:00) เวลาไทย"""
-    y, m = map(int, month.split("-"))
-    start = datetime(y, m, 1, tzinfo=BKK)
-    end = datetime(y + m // 12, m % 12 + 1, 1, tzinfo=BKK)
-    return start, end
 
 
 def _get_or_404(db: Session, expense_id: int) -> Expense:
@@ -39,7 +32,7 @@ def _check_category(db: Session, category_id: int) -> None:
 
 @router.get("", response_model=ExpenseList)
 def list_expenses(
-    month: str | None = Query(default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$", examples=["2026-10"]),
+    month: str | None = Query(default=None, pattern=MONTH_PATTERN, examples=["2026-10"]),
     q: str | None = Query(default=None, max_length=100, description="ค้นใน ร้านค้า/ผู้รับ และ โน้ต"),
     category_id: int | None = None,
     limit: int = Query(default=50, ge=1, le=200),
@@ -48,7 +41,7 @@ def list_expenses(
 ):
     filters = []
     if month:
-        start, end = _month_range(month)
+        start, end = month_range(month)
         filters += [Expense.spent_at >= start, Expense.spent_at < end]
     if q:
         filters.append(or_(Expense.payee.ilike(f"%{q}%"), Expense.note.ilike(f"%{q}%")))

@@ -20,21 +20,15 @@ export function ConnectionBadge() {
 
   useFocusEffect(
     useCallback(() => {
-      setStatus('checking');
       checkConnection().then(setStatus);
     }, []),
   );
 
-  const ok = status === 'ok';
+  // โชว์เฉพาะตอนมีปัญหา — เชื่อมต่อปกติไม่ต้องรกหน้าจอ
+  if (status === 'ok' || status === 'checking') return null;
   return (
-    <Pressable
-      onPress={() => router.push('/settings')}
-      style={[styles.badge, { backgroundColor: ok ? Colors.surface : Colors.butter }]}>
-      <Ionicons
-        name={ok ? 'checkmark-circle' : status === 'checking' ? 'time-outline' : 'alert-circle'}
-        size={16}
-        color={ok ? Colors.success : Colors.text}
-      />
+    <Pressable onPress={() => router.push('/settings')} style={styles.badge}>
+      <Ionicons name="alert-circle" size={16} color={Colors.text} />
       <Text style={styles.text}>{LABELS[status]}</Text>
     </Pressable>
   );
@@ -51,6 +45,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.one + 2,
     borderWidth: 1,
     borderColor: Colors.lemon,
+    backgroundColor: Colors.butter,
   },
   text: { fontSize: FontSize.caption, color: Colors.text },
 });

@@ -8,6 +8,7 @@ import type {
   ExpenseUpdate,
   ReadResult,
   ScanKind,
+  Summary,
 } from '@/lib/types';
 
 export type ConnectionStatus = 'ok' | 'not-configured' | 'unreachable' | 'bad-token';
@@ -69,6 +70,10 @@ export function listExpenses({ month, q, categoryId, limit = 50, offset = 0 }: E
   if (q) params.set('q', q);
   if (categoryId != null) params.set('category_id', String(categoryId));
   return apiFetch<ExpenseList>(`/api/expenses?${params}`);
+}
+
+export function getSummary(month: string) {
+  return apiFetch<Summary>(`/api/summary?month=${month}`);
 }
 
 export function getExpense(id: number) {

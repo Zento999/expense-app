@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -45,11 +45,17 @@ function groupByDay(items: Expense[]): Section[] {
 }
 
 export default function HistoryScreen() {
-  const thisMonth = addMonths(new Date(), 0);
-  const [month, setMonth] = useState(thisMonth);
+  // เดือนและหมวดเก็บใน URL (?month=2026-10&category=1) — หน้าสรุปจึงส่งตัวกรองมาให้ได้ตรงๆ
+  const params = useLocalSearchParams<{ month?: string; category?: string }>();
+  const thisMonthKey = monthKey(new Date());
+  const monthStr = params.month && /^\d{4}-\d{2}$/.test(params.month) ? params.month : thisMonthKey;
+  const month = new Date(Number(monthStr.slice(0, 4)), Number(monthStr.slice(5)) - 1, 1);
+  const categoryId = params.category ? Number(params.category) : null;
+  const setMonth = (d: Date) => router.setParams({ month: monthKey(d) });
+  const setCategoryId = (id: number | null) => router.setParams({ category: id === null ? '' : String(id) });
+
   const [search, setSearch] = useState(''); // สิ่งที่พิมพ์อยู่
   const [query, setQuery] = useState(''); // สิ่งที่ค้นจริง (หลังหยุดพิมพ์)
-  const [categoryId, setCategoryId] = useState<number | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
 
   const [items, setItems] = useState<Expense[]>([]);
@@ -65,7 +71,7 @@ export default function HistoryScreen() {
   const loadingMore = useRef(false);
 
   const filtered = query !== '' || categoryId !== null;
-  const canGoNext = monthKey(month) < monthKey(thisMonth);
+  const canGoNext = monthStr < thisMonthKey;
 
   // หน่วงการค้นหา: รอให้หยุดพิมพ์ 0.3 วิ ก่อนยิง API (ไม่ยิงทุกตัวอักษร)
   useEffect(() => {
@@ -80,7 +86,7 @@ export default function HistoryScreen() {
   const fetchPage = useCallback(
     (offset: number) => {
       const seq = ++requestSeq.current;
-      const filters = { month: monthKey(month), q: query || undefined, categoryId: categoryId ?? undefined };
+      const filters = { month: monthStr, q: query || undefined, categoryId: categoryId ?? undefined };
       Promise.all([
         listExpenses({ ...filters, limit: PAGE_SIZE, offset }),
         // กรองอยู่ → ขอยอดทั้งเดือนแยกอีกครั้ง (limit=1 เพราะต้องการแค่ total ที่ DB รวมให้)
@@ -104,7 +110,8 @@ export default function HistoryScreen() {
           loadingMore.current = false;
         });
     },
-    [month, query, categoryId, filtered],
+    // ใช้ monthStr (string) ไม่ใช่ month (Date) — Date ถูกสร้างใหม่ทุก render จะทำให้โหลดวนไม่หยุด
+    [monthStr, query, categoryId, filtered],
   );
 
   // โหลดใหม่ทุกครั้งที่กลับมาหน้านี้ (เช่นหลังบันทึก/แก้/ลบ) และเมื่อเปลี่ยนเดือน/ตัวกรอง
@@ -126,22 +133,28 @@ export default function HistoryScreen() {
   }
 
   const category = categories.find((c) => c.id === categoryId);
-  const filterLabel = !filtered
-    ? null
-    : [category && `เฉพาะ ${category.name}`, query && `ค้น "${query}"`].filter(Boolean).join(' · ');
+  const filterLabel = [category && `เฉพาะ ${category.name}`, query && `ค้น "${query}"`].filter(Boolean).join(' · ');
+  const share = monthTotal > 0 ? Math.round((totalAmount / monthTotal) * 100) : 0;
 
   const header = (
     <View style={styles.header}>
       <MonthTotalCard
         month={month}
         canGoNext={canGoNext}
-        onPrev={() => setMonth((m) => addMonths(m, -1))}
-        onNext={() => setMonth((m) => addMonths(m, 1))}
+        onPrev={() => setMonth(addMonths(month, -1))}
+        onNext={() => setMonth(addMonths(month, 1))}
+        caption={filtered ? filterLabel : 'ใช้ไปทั้งเดือน'}
         total={totalAmount}
-        count={totalCount}
-        monthTotal={monthTotal}
-        filterLabel={filterLabel}
-      />
+        muted={filtered}>
+        <Text style={styles.cardCaption}>
+          {totalCount} รายการ{filtered && ` · ${share}% ของทั้งเดือน ${formatBaht(monthTotal)}`}
+        </Text>
+        {filtered && (
+          <View style={styles.shareTrack}>
+            <View style={[styles.shareBar, { width: `${Math.min(share, 100)}%` }]} />
+          </View>
+        )}
+      </MonthTotalCard>
 
       <View style={styles.search}>
         <Ionicons name="search" size={18} color={Colors.textSecondary} />
@@ -226,6 +239,15 @@ const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.background },
   list: { paddingHorizontal: Spacing.three, paddingBottom: Spacing.six },
   header: { gap: Spacing.three, paddingTop: Spacing.three, paddingBottom: Spacing.one },
+  cardCaption: { textAlign: 'center', fontSize: FontSize.caption, color: Colors.text },
+  shareTrack: {
+    height: 6,
+    borderRadius: Radius.full,
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    marginTop: Spacing.two,
+    overflow: 'hidden',
+  },
+  shareBar: { height: 6, borderRadius: Radius.full, backgroundColor: Colors.text },
   search: {
     flexDirection: 'row',
     alignItems: 'center',

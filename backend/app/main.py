@@ -3,11 +3,12 @@ from sqlalchemy import text
 
 from .db import engine
 from .deps import require_token
-from .routers import categories, expenses, uploads
+from .routers import categories, expenses, summary, uploads
 
 app = FastAPI(title="Expense API")
 app.include_router(categories.router)
 app.include_router(expenses.router)
+app.include_router(summary.router)
 app.include_router(uploads.router)
 
 

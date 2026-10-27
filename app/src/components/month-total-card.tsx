@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
@@ -10,20 +11,16 @@ type Props = {
   canGoNext: boolean;
   onPrev: () => void;
   onNext: () => void;
-  total: number; // ยอดของสิ่งที่แสดงอยู่ (กรองแล้ว)
-  count: number;
-  monthTotal: number; // ยอดทั้งเดือน (ไม่กรอง) ไว้เทียบสัดส่วน
-  filterLabel: string | null; // null = ไม่ได้กรอง
+  caption: string; // บรรทัดเหนือตัวเลข เช่น "ใช้ไปทั้งเดือน" / "เฉพาะ อาหาร"
+  total: number;
+  muted?: boolean; // สีอ่อน = ตัวเลขนี้ไม่ใช่ยอดทั้งเดือน (กำลังกรองอยู่)
+  children?: ReactNode; // ส่วนท้ายการ์ด แต่ละหน้าใส่ต่างกัน
 };
 
-/** การ์ดยอดรวมรายเดือน — ตัวเลขใหญ่สุดในหน้า, กรองแล้วบอกสัดส่วนเทียบทั้งเดือน */
-export function MonthTotalCard({ month, canGoNext, onPrev, onNext, total, count, monthTotal, filterLabel }: Props) {
-  const filtered = filterLabel !== null;
-  const share = monthTotal > 0 ? Math.round((total / monthTotal) * 100) : 0;
-
+/** การ์ดยอดรวมรายเดือน — ตัวเลขใหญ่สุดในหน้า ใช้ทั้งหน้าสรุปและหน้าประวัติ */
+export function MonthTotalCard({ month, canGoNext, onPrev, onNext, caption, total, muted, children }: Props) {
   return (
-    // สีอ่อนลงตอนกรอง = สัญญาณว่าตัวเลขนี้ไม่ใช่ยอดทั้งเดือน
-    <View style={[styles.card, { backgroundColor: filtered ? Colors.butter : Colors.primarySoft }]}>
+    <View style={[styles.card, { backgroundColor: muted ? Colors.butter : Colors.primarySoft }]}>
       <View style={styles.monthRow}>
         <Pressable onPress={onPrev} hitSlop={16} accessibilityLabel="เดือนก่อน">
           <Ionicons name="chevron-back" size={24} color={Colors.text} />
@@ -33,19 +30,11 @@ export function MonthTotalCard({ month, canGoNext, onPrev, onNext, total, count,
           <Ionicons name="chevron-forward" size={24} color={Colors.text} style={!canGoNext && styles.disabled} />
         </Pressable>
       </View>
-
-      <Text style={styles.caption}>{filterLabel ?? 'ใช้ไปทั้งเดือน'}</Text>
+      <Text style={styles.caption}>{caption}</Text>
       <Text style={styles.total} numberOfLines={1} adjustsFontSizeToFit>
         {formatBaht(total)}
       </Text>
-      <Text style={styles.caption}>
-        {count} รายการ{filtered && ` · ${share}% ของทั้งเดือน ${formatBaht(monthTotal)}`}
-      </Text>
-      {filtered && (
-        <View style={styles.track}>
-          <View style={[styles.bar, { width: `${Math.min(share, 100)}%` }]} />
-        </View>
-      )}
+      {children}
     </View>
   );
 }
@@ -57,12 +46,4 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.25 },
   caption: { textAlign: 'center', fontSize: FontSize.caption, color: Colors.text },
   total: { textAlign: 'center', fontSize: 40, fontWeight: '800', color: Colors.text },
-  track: {
-    height: 6,
-    borderRadius: Radius.full,
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-    marginTop: Spacing.two,
-    overflow: 'hidden',
-  },
-  bar: { height: 6, borderRadius: Radius.full, backgroundColor: Colors.text },
 });

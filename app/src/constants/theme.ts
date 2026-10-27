@@ -20,6 +20,12 @@ export const Colors = {
   text: '#4A3A00',
   textSecondary: '#B39A4A',
 
+  // กราฟ: ทองเข้มผ่านตัวตรวจสีกราฟ (contrast ≥ 3:1 บนพื้นขาว) — พาสเทลของหมวดอ่อนเกินใช้เป็นแท่ง
+  chart: '#B07F00',
+  chartMuted: '#E8CF7F', // แท่งเดือนอื่นที่ไม่ได้เลือก (มีป้ายเดือนกำกับเสมอ)
+  chartOther: '#B4B2A9', // "อื่นๆ" ที่รวมหลายหมวด
+  chartTrack: '#FFF3CC',
+
   overlay: 'rgba(74, 58, 0, 0.35)', // ฉากหลังตอนเปิด bottom sheet
   danger: '#D9534F',
   success: '#5BA36B',
