@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { randomUUID } from 'expo-crypto';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, ToastAndroid, View } from 'react-native';
@@ -9,8 +10,9 @@ import { CategoryGrid } from '@/components/category-grid';
 import { Numpad } from '@/components/numpad';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { formatTyped, isValidAmount, pressKey, toApiAmount, type NumpadKey } from '@/lib/amount';
-import { createExpense, describeError, getCategories } from '@/lib/api';
+import { createExpense, describeError, getCategories, isNetworkError } from '@/lib/api';
 import { dayLabel, withCurrentTime } from '@/lib/date';
+import { enqueue } from '@/lib/offline-queue';
 import { getLastCategoryId, setLastCategoryId } from '@/lib/prefs';
 import type { Category } from '@/lib/types';
 
@@ -62,21 +64,30 @@ export default function CashScreen() {
     }
     if (categoryId === null) return;
     setSaving(true);
+    const body = {
+      amount: toApiAmount(amount),
+      category_id: categoryId,
+      source: 'cash' as const,
+      spent_at: withCurrentTime(day).toISOString(),
+      payee: payee.trim() || null,
+      client_id: randomUUID(), // ส่งซ้ำจากคิวกี่ครั้งก็ได้รายการเดียว
+    };
+    const label = `฿${formatTyped(body.amount)}`;
     try {
-      await createExpense({
-        amount: toApiAmount(amount),
-        category_id: categoryId,
-        source: 'cash',
-        spent_at: withCurrentTime(day).toISOString(),
-        payee: payee.trim() || null,
-      });
-      await setLastCategoryId(categoryId);
-      ToastAndroid.show(`บันทึก ฿${formatTyped(toApiAmount(amount))} แล้ว`, ToastAndroid.SHORT);
-      router.back();
+      await createExpense(body);
+      ToastAndroid.show(`บันทึก ${label} แล้ว`, ToastAndroid.SHORT);
     } catch (e) {
-      ToastAndroid.show(describeError(e, 'บันทึก'), ToastAndroid.LONG);
-      setSaving(false);
+      if (!isNetworkError(e)) {
+        ToastAndroid.show(describeError(e, 'บันทึก'), ToastAndroid.LONG);
+        setSaving(false);
+        return;
+      }
+      // ติดต่อเซิร์ฟเวอร์ไม่ได้ → เก็บไว้ในเครื่องก่อน ไม่ให้ผู้ใช้ต้องจำไปกรอกใหม่
+      await enqueue({ ...body, queued_at: new Date().toISOString() });
+      ToastAndroid.show(`ออฟไลน์อยู่ — เก็บ ${label} ไว้ในเครื่องแล้ว จะส่งให้เองเมื่อเชื่อมต่อได้`, ToastAndroid.LONG);
     }
+    await setLastCategoryId(categoryId);
+    router.back();
   }
 
   return (

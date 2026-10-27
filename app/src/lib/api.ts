@@ -1,3 +1,5 @@
+import Storage from 'expo-sqlite/kv-store';
+
 import { loadSettings } from '@/lib/settings';
 import type {
   Category,
@@ -23,8 +25,11 @@ export class ApiError extends Error {
   }
 }
 
-/** เรียก API พร้อมแนบ token ให้อัตโนมัติ */
-export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+/**
+ * เรียก API พร้อมแนบ token ให้อัตโนมัติ
+ * timeoutMs: ถ้าคอมปิด request ไป IP ของ Tailscale อาจค้างเป็นนาทีกว่าจะ error — ตัดเองดีกว่า
+ */
+export async function apiFetch<T>(path: string, init: RequestInit = {}, timeoutMs = 20_000): Promise<T> {
   const { serverUrl, appToken } = await loadSettings();
   if (!serverUrl) throw new Error('ยังไม่ได้ตั้งค่าเซิร์ฟเวอร์');
   // body เป็น JSON string → ใส่ Content-Type เอง / เป็น FormData → ปล่อยให้ fetch ใส่ boundary ให้
@@ -32,6 +37,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   const res = await fetch(`${serverUrl}${path}`, {
     ...init,
     headers: { ...jsonHeader, 'X-App-Token': appToken, ...init.headers },
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -56,8 +62,19 @@ export async function checkConnection(): Promise<ConnectionStatus> {
   }
 }
 
-export function getCategories() {
-  return apiFetch<Category[]>('/api/categories');
+const CATEGORIES_CACHE_KEY = 'categories_cache';
+
+/** หมวดหมู่: โหลดจากเซิร์ฟเวอร์แล้วจำไว้ — ออฟไลน์อยู่ก็ใช้ชุดล่าสุดที่จำไว้ (หน้าเงินสดจะได้บันทึกเข้าคิวได้) */
+export async function getCategories(): Promise<Category[]> {
+  try {
+    const categories = await apiFetch<Category[]>('/api/categories', {}, 8_000);
+    await Storage.setItem(CATEGORIES_CACHE_KEY, JSON.stringify(categories));
+    return categories;
+  } catch (e) {
+    const cached = isNetworkError(e) ? await Storage.getItem(CATEGORIES_CACHE_KEY) : null;
+    if (cached) return JSON.parse(cached);
+    throw e;
+  }
 }
 
 export function createExpense(body: ExpenseCreate) {
@@ -101,18 +118,26 @@ export async function uploadImage(bytes: Uint8Array): Promise<string> {
   // แต่รับ object ที่มี bytes() — ส่ง bytes ที่ได้จาก ImagePicker ตรงๆ ไม่ต้องเปิดไฟล์
   const part = { name: 'image.jpg', type: 'image/jpeg', bytes: async () => bytes };
   form.append('file', part as unknown as Blob);
-  const { upload_id } = await apiFetch<{ upload_id: string }>('/api/uploads', { method: 'POST', body: form });
+  // รูปใหญ่ 1–2MB ผ่าน Tailscale ให้เวลานานหน่อย
+  const { upload_id } = await apiFetch<{ upload_id: string }>('/api/uploads', { method: 'POST', body: form }, 60_000);
   return upload_id;
+}
+
+/** ติดต่อเซิร์ฟเวอร์ไม่ได้เลย (เน็ตหลุด / คอมปิด / หมดเวลา) — ต่างจากเซิร์ฟเวอร์ตอบ error กลับมา */
+export function isNetworkError(e: unknown): boolean {
+  if (e instanceof ApiError) return false;
+  return e instanceof TypeError || (e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError'));
 }
 
 /** ข้อความ error ที่บอกสาเหตุจริง — เน็ตหลุด กับ เซิร์ฟเวอร์ปฏิเสธ ต้องแก้คนละแบบ */
 export function describeError(e: unknown, action: string): string {
   console.warn(`[${action}]`, e); // ดูรายละเอียดเต็มได้ในหน้าต่าง Metro บนคอม
   if (e instanceof ApiError) return `${action}ไม่สำเร็จ (HTTP ${e.status}: ${e.detail})`;
-  if (e instanceof TypeError) return `${action}ไม่สำเร็จ — ติดต่อเซิร์ฟเวอร์ไม่ได้ เช็คการเชื่อมต่อ`;
+  if (isNetworkError(e)) return `${action}ไม่สำเร็จ — ติดต่อเซิร์ฟเวอร์ไม่ได้ เช็คการเชื่อมต่อ`;
   return `${action}ไม่สำเร็จ — ${e instanceof Error ? e.message : 'ไม่ทราบสาเหตุ'}`;
 }
 
 export function readUpload(uploadId: string, kind: ScanKind) {
-  return apiFetch<ReadResult>(`/api/uploads/${uploadId}/read?kind=${kind}`, { method: 'POST' });
+  // AI อ่านรูปปกติ 3–10 วิ แต่เผื่อ retry ฝั่งเซิร์ฟเวอร์
+  return apiFetch<ReadResult>(`/api/uploads/${uploadId}/read?kind=${kind}`, { method: 'POST' }, 90_000);
 }

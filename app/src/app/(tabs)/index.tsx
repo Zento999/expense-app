@@ -8,6 +8,7 @@ import { CategoryBars } from '@/components/category-bars';
 import { ConnectionBadge } from '@/components/connection-badge';
 import { MonthBars } from '@/components/month-bars';
 import { MonthTotalCard } from '@/components/month-total-card';
+import { PendingBanner } from '@/components/pending-banner';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { formatBaht } from '@/lib/amount';
 import { describeError, getSummary } from '@/lib/api';
@@ -102,6 +103,7 @@ export default function SummaryScreen() {
         </View>
 
         <ConnectionBadge />
+        <PendingBanner onSynced={load} />
 
         <MonthTotalCard
           month={month}

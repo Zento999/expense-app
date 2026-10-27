@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ExpenseRow } from '@/components/expense-row';
 import { MonthTotalCard } from '@/components/month-total-card';
+import { PendingBanner } from '@/components/pending-banner';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { formatBaht } from '@/lib/amount';
 import { describeError, getCategories, listExpenses } from '@/lib/api';
@@ -138,6 +139,7 @@ export default function HistoryScreen() {
 
   const header = (
     <View style={styles.header}>
+      <PendingBanner onSynced={() => fetchPage(0)} />
       <MonthTotalCard
         month={month}
         canGoNext={canGoNext}

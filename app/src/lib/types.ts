@@ -30,6 +30,7 @@ export type ExpenseCreate = {
   payee?: string | null;
   note?: string | null;
   upload_id?: string; // จาก POST /api/uploads — แนบรูปไปกับรายการ
+  client_id?: string; // UUID จากมือถือ: ส่งซ้ำได้โดยไม่เกิดรายการซ้ำ (ใช้กับคิวออฟไลน์)
 };
 
 /** PATCH: ส่งเฉพาะช่องที่จะแก้ */

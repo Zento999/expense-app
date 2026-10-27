@@ -37,6 +37,7 @@ class Expense(Base):
     note: Mapped[str | None] = mapped_column(Text)
     image_path: Mapped[str | None] = mapped_column(String(300))  # path สัมพัทธ์ใน receipts_dir
     ai_data: Mapped[dict | None] = mapped_column(JSONB)  # ผลดิบจาก AI ไว้ debug (บทที่ 6)
+    client_id: Mapped[str | None] = mapped_column(String(36), unique=True)  # id จากมือถือ กันบันทึกซ้ำ
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

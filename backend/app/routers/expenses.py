@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..config import BKK
@@ -63,6 +64,11 @@ def list_expenses(
 
 @router.post("", response_model=ExpenseOut, status_code=201)
 def create_expense(body: ExpenseCreate, db: Session = Depends(get_db)):
+    # idempotent: client_id นี้เคยบันทึกแล้ว → คืนแถวเดิม ไม่สร้างซ้ำ
+    # (มือถือส่งสำเร็จแต่เน็ตหลุดก่อนได้คำตอบ → คิวออฟไลน์จะส่งซ้ำ)
+    if body.client_id and (existing := _find_by_client_id(db, body.client_id)):
+        return existing
+
     _check_category(db, body.category_id)
     expense = Expense(**body.model_dump(exclude={"upload_id"}))
     if expense.spent_at is None:
@@ -79,13 +85,22 @@ def create_expense(body: ExpenseCreate, db: Session = Depends(get_db)):
     db.add(expense)
     try:
         db.commit()
-    except Exception:
+    except Exception as e:
         # บันทึก DB ไม่สำเร็จ → ลบรูปที่เพิ่งย้ายไป จะได้ไม่มีไฟล์กำพร้า
+        db.rollback()
         if expense.image_path:
             delete_image(expense.image_path)
+        # ส่งซ้ำพร้อมกัน 2 request: อีกอันบันทึกไปก่อนแล้ว (ชน unique) → คืนแถวนั้นแทน error
+        if isinstance(e, IntegrityError) and body.client_id:
+            if existing := _find_by_client_id(db, body.client_id):
+                return existing
         raise
     db.refresh(expense)
     return expense
+
+
+def _find_by_client_id(db: Session, client_id: str) -> Expense | None:
+    return db.scalar(select(Expense).where(Expense.client_id == client_id))
 
 
 @router.get("/{expense_id}", response_model=ExpenseOut)

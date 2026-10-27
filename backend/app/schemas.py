@@ -42,6 +42,8 @@ class ExpenseCreate(BaseModel):
     payee: str | None = Field(default=None, max_length=200)
     note: str | None = Field(default=None, max_length=1000)
     upload_id: str | None = Field(default=None, pattern=UPLOAD_ID_PATTERN)  # จาก POST /api/uploads
+    # UUID ที่มือถือสร้าง: ส่งซ้ำกี่ครั้งก็ได้แถวเดียว (สำคัญตอนส่งคิวออฟไลน์ที่อาจส่งสำเร็จแต่ไม่ได้คำตอบ)
+    client_id: str | None = Field(default=None, pattern=r"^[0-9a-fA-F-]{36}$")
 
     _tz = field_validator("spent_at")(_assume_bkk)
 
