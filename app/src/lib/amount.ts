@@ -35,6 +35,12 @@ export function formatTyped(value: string): string {
   return dec === undefined ? withCommas : `${withCommas}.${dec}`;
 }
 
+/** แสดงยอดจาก API: 1234.5 → "฿1,234.50", 189 → "฿189" (ไม่โชว์ .00 ให้ตาไม่ล้า) */
+export function formatBaht(n: number): string {
+  const decimals = Number.isInteger(n) ? 0 : 2;
+  return `฿${n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+}
+
 /** สำหรับส่ง API: "65.5" → "65.50", "65." → "65.00" */
 export function toApiAmount(value: string): string {
   return Number(value).toFixed(2);

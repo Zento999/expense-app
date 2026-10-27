@@ -32,6 +32,23 @@ export type ExpenseCreate = {
   upload_id?: string; // จาก POST /api/uploads — แนบรูปไปกับรายการ
 };
 
+/** PATCH: ส่งเฉพาะช่องที่จะแก้ */
+export type ExpenseUpdate = Partial<Pick<ExpenseCreate, 'amount' | 'category_id' | 'spent_at' | 'payee' | 'note'>>;
+
+export type ExpenseList = {
+  items: Expense[];
+  total_count: number; // จำนวนทั้งหมดที่ตรงเงื่อนไข (ไม่ใช่แค่หน้านี้)
+  total_amount: number;
+};
+
+export type ExpenseQuery = {
+  month?: string; // "2026-10"
+  q?: string;
+  categoryId?: number;
+  limit?: number;
+  offset?: number;
+};
+
 export type ScanKind = 'slip' | 'receipt';
 
 /** ผลที่ AI อ่านจากรูป (ทุกช่องเป็น null ได้) */

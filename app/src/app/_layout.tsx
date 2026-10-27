@@ -18,6 +18,8 @@ export default function RootLayout() {
         <Stack.Screen name="settings" options={{ title: 'ตั้งค่า' }} />
         <Stack.Screen name="add/cash" options={{ title: 'เงินสด', presentation: 'modal' }} />
         <Stack.Screen name="add/scan" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="expense/[id]" options={{ title: 'รายละเอียด' }} />
+        <Stack.Screen name="expense/edit/[id]" options={{ title: 'แก้ไขรายการ' }} />
       </Stack>
     </>
   );

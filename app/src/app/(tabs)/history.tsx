@@ -1,32 +1,231 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { StyleSheet, Text, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  SectionList,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ExpenseRow } from '@/components/expense-row';
+import { MonthTotalCard } from '@/components/month-total-card';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
+import { formatBaht } from '@/lib/amount';
+import { describeError, getCategories, listExpenses } from '@/lib/api';
+import { addMonths, dayHeader, dayKey, monthKey } from '@/lib/date';
+import type { Category, Expense } from '@/lib/types';
+
+const PAGE_SIZE = 50;
+const SEARCH_DELAY_MS = 300;
+
+type Section = { key: string; title: string; total: number; data: Expense[] };
+
+/** รายการเรียงใหม่→เก่าอยู่แล้ว (API เรียงให้) แค่ตัดเป็นกลุ่มตามวัน */
+function groupByDay(items: Expense[]): Section[] {
+  const sections: Section[] = [];
+  for (const e of items) {
+    const d = new Date(e.spent_at);
+    const key = dayKey(d);
+    let section = sections[sections.length - 1];
+    if (section?.key !== key) {
+      section = { key, title: dayHeader(d), total: 0, data: [] };
+      sections.push(section);
+    }
+    section.data.push(e);
+    section.total += e.amount;
+  }
+  return sections;
+}
 
 export default function HistoryScreen() {
+  const thisMonth = addMonths(new Date(), 0);
+  const [month, setMonth] = useState(thisMonth);
+  const [search, setSearch] = useState(''); // สิ่งที่พิมพ์อยู่
+  const [query, setQuery] = useState(''); // สิ่งที่ค้นจริง (หลังหยุดพิมพ์)
+  const [categoryId, setCategoryId] = useState<number | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
+
+  const [items, setItems] = useState<Expense[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalAmount, setTotalAmount] = useState(0);
+  const [monthTotal, setMonthTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // นับ request: ถ้าเปลี่ยนตัวกรองเร็วๆ คำตอบเก่าที่มาช้าจะถูกทิ้ง ไม่ทับคำตอบใหม่
+  const requestSeq = useRef(0);
+  const loadingMore = useRef(false);
+
+  const filtered = query !== '' || categoryId !== null;
+  const canGoNext = monthKey(month) < monthKey(thisMonth);
+
+  // หน่วงการค้นหา: รอให้หยุดพิมพ์ 0.3 วิ ก่อนยิง API (ไม่ยิงทุกตัวอักษร)
+  useEffect(() => {
+    const timer = setTimeout(() => setQuery(search.trim()), SEARCH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    getCategories().then(setCategories, () => {});
+  }, []);
+
+  const fetchPage = useCallback(
+    (offset: number) => {
+      const seq = ++requestSeq.current;
+      const filters = { month: monthKey(month), q: query || undefined, categoryId: categoryId ?? undefined };
+      Promise.all([
+        listExpenses({ ...filters, limit: PAGE_SIZE, offset }),
+        // กรองอยู่ → ขอยอดทั้งเดือนแยกอีกครั้ง (limit=1 เพราะต้องการแค่ total ที่ DB รวมให้)
+        filtered && offset === 0 ? listExpenses({ month: filters.month, limit: 1 }) : null,
+      ])
+        .then(([page, whole]) => {
+          if (seq !== requestSeq.current) return;
+          setItems((prev) => (offset === 0 ? page.items : [...prev, ...page.items]));
+          setTotalCount(page.total_count);
+          setTotalAmount(page.total_amount);
+          if (offset === 0) setMonthTotal(whole ? whole.total_amount : page.total_amount);
+          setError(null);
+        })
+        .catch((e) => {
+          if (seq === requestSeq.current) setError(describeError(e, 'โหลดรายการ'));
+        })
+        .finally(() => {
+          if (seq !== requestSeq.current) return;
+          setLoading(false);
+          setRefreshing(false);
+          loadingMore.current = false;
+        });
+    },
+    [month, query, categoryId, filtered],
+  );
+
+  // โหลดใหม่ทุกครั้งที่กลับมาหน้านี้ (เช่นหลังบันทึก/แก้/ลบ) และเมื่อเปลี่ยนเดือน/ตัวกรอง
+  useFocusEffect(
+    useCallback(() => {
+      fetchPage(0);
+    }, [fetchPage]),
+  );
+
+  function onRefresh() {
+    setRefreshing(true);
+    fetchPage(0);
+  }
+
+  function onEndReached() {
+    if (loadingMore.current || items.length >= totalCount) return;
+    loadingMore.current = true;
+    fetchPage(items.length);
+  }
+
+  const category = categories.find((c) => c.id === categoryId);
+  const filterLabel = !filtered
+    ? null
+    : [category && `เฉพาะ ${category.name}`, query && `ค้น "${query}"`].filter(Boolean).join(' · ');
+
+  const header = (
+    <View style={styles.header}>
+      <MonthTotalCard
+        month={month}
+        canGoNext={canGoNext}
+        onPrev={() => setMonth((m) => addMonths(m, -1))}
+        onNext={() => setMonth((m) => addMonths(m, 1))}
+        total={totalAmount}
+        count={totalCount}
+        monthTotal={monthTotal}
+        filterLabel={filterLabel}
+      />
+
+      <View style={styles.search}>
+        <Ionicons name="search" size={18} color={Colors.textSecondary} />
+        <TextInput
+          style={styles.searchInput}
+          value={search}
+          onChangeText={setSearch}
+          placeholder="ค้นหาร้าน, โน้ต"
+          placeholderTextColor={Colors.textSecondary}
+          returnKeyType="search"
+        />
+        {search !== '' && (
+          <Pressable onPress={() => setSearch('')} hitSlop={12} accessibilityLabel="ล้างคำค้น">
+            <Ionicons name="close-circle" size={18} color={Colors.textSecondary} />
+          </Pressable>
+        )}
+      </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+        <Chip label="ทั้งหมด" selected={categoryId === null} onPress={() => setCategoryId(null)} />
+        {categories.map((c) => (
+          <Chip
+            key={c.id}
+            label={`${c.icon} ${c.name}`}
+            selected={categoryId === c.id}
+            onPress={() => setCategoryId(categoryId === c.id ? null : c.id)}
+          />
+        ))}
+      </ScrollView>
+
+      {error && <Text style={styles.error}>{error}</Text>}
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.flex} edges={['top']}>
-      <View style={styles.container}>
-        <Text style={styles.title}>ประวัติ</Text>
-        <View style={styles.search}>
-          <Ionicons name="search" size={18} color={Colors.textSecondary} />
-          <Text style={styles.searchText}>ค้นหาร้าน, โน้ต</Text>
-        </View>
-        <View style={styles.empty}>
-          <Ionicons name="receipt-outline" size={48} color={Colors.primarySoft} />
-          <Text style={styles.emptyTitle}>รายการจะขึ้นที่นี่</Text>
-          <Text style={styles.emptyBody}>กดปุ่ม ＋ ด้านล่างเพื่อบันทึกรายจ่ายแรก (เปิดใช้ในบทที่ 4)</Text>
-        </View>
-      </View>
+      <SectionList
+        sections={groupByDay(items)}
+        keyExtractor={(e) => String(e.id)}
+        ListHeaderComponent={header}
+        renderSectionHeader={({ section }) => (
+          <View style={styles.dayRow}>
+            <Text style={styles.dayText}>{section.title}</Text>
+            <Text style={styles.dayText}>{formatBaht(section.total)}</Text>
+          </View>
+        )}
+        renderItem={({ item }) => (
+          <ExpenseRow expense={item} onPress={() => router.push({ pathname: '/expense/[id]', params: { id: String(item.id) } })} />
+        )}
+        stickySectionHeadersEnabled={false}
+        contentContainerStyle={styles.list}
+        keyboardShouldPersistTaps="handled"
+        onEndReached={onEndReached}
+        onEndReachedThreshold={0.5}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />}
+        ListEmptyComponent={
+          loading ? (
+            <ActivityIndicator color={Colors.primary} style={styles.loading} />
+          ) : (
+            <View style={styles.empty}>
+              <Ionicons name={filtered ? 'search-outline' : 'receipt-outline'} size={44} color={Colors.primarySoft} />
+              <Text style={styles.emptyText}>
+                {filtered ? 'ไม่พบรายการที่ตรงกัน' : 'ยังไม่มีรายจ่ายเดือนนี้ — กด ＋ เพื่อบันทึก'}
+              </Text>
+            </View>
+          )
+        }
+      />
     </SafeAreaView>
+  );
+}
+
+function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={[styles.chip, selected && styles.chipSelected]}>
+      <Text style={styles.chipText}>{label}</Text>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.background },
-  container: { flex: 1, padding: Spacing.three, gap: Spacing.three },
-  title: { fontSize: FontSize.title, fontWeight: '700', color: Colors.text },
+  list: { paddingHorizontal: Spacing.three, paddingBottom: Spacing.six },
+  header: { gap: Spacing.three, paddingTop: Spacing.three, paddingBottom: Spacing.one },
   search: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -36,10 +235,29 @@ const styles = StyleSheet.create({
     borderColor: Colors.lemon,
     borderRadius: Radius.md,
     paddingHorizontal: Spacing.three,
-    paddingVertical: 12,
   },
-  searchText: { color: Colors.textSecondary, fontSize: FontSize.body },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.two, paddingBottom: Spacing.six },
-  emptyTitle: { fontSize: FontSize.body, fontWeight: '700', color: Colors.text },
-  emptyBody: { fontSize: FontSize.caption, color: Colors.textSecondary, textAlign: 'center' },
+  searchInput: { flex: 1, paddingVertical: 10, fontSize: FontSize.body, color: Colors.text },
+  chips: { gap: Spacing.two },
+  chip: {
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.lemon,
+    backgroundColor: Colors.surface,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.one + 2,
+  },
+  chipSelected: { backgroundColor: Colors.primarySoft, borderColor: Colors.primarySoft },
+  chipText: { fontSize: FontSize.caption, color: Colors.text },
+  error: {
+    backgroundColor: Colors.butter,
+    borderRadius: Radius.sm,
+    padding: Spacing.two,
+    fontSize: FontSize.caption,
+    color: Colors.text,
+  },
+  dayRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: Spacing.three, marginBottom: Spacing.half },
+  dayText: { fontSize: FontSize.caption, color: Colors.textSecondary, fontWeight: '600' },
+  loading: { marginTop: Spacing.six },
+  empty: { alignItems: 'center', gap: Spacing.two, marginTop: Spacing.six },
+  emptyText: { fontSize: FontSize.body, color: Colors.textSecondary, textAlign: 'center' },
 });

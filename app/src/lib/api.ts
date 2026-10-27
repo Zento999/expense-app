@@ -1,5 +1,14 @@
 import { loadSettings } from '@/lib/settings';
-import type { Category, Expense, ExpenseCreate, ReadResult, ScanKind } from '@/lib/types';
+import type {
+  Category,
+  Expense,
+  ExpenseCreate,
+  ExpenseList,
+  ExpenseQuery,
+  ExpenseUpdate,
+  ReadResult,
+  ScanKind,
+} from '@/lib/types';
 
 export type ConnectionStatus = 'ok' | 'not-configured' | 'unreachable' | 'bad-token';
 
@@ -52,6 +61,32 @@ export function getCategories() {
 
 export function createExpense(body: ExpenseCreate) {
   return apiFetch<Expense>('/api/expenses', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export function listExpenses({ month, q, categoryId, limit = 50, offset = 0 }: ExpenseQuery) {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (month) params.set('month', month);
+  if (q) params.set('q', q);
+  if (categoryId != null) params.set('category_id', String(categoryId));
+  return apiFetch<ExpenseList>(`/api/expenses?${params}`);
+}
+
+export function getExpense(id: number) {
+  return apiFetch<Expense>(`/api/expenses/${id}`);
+}
+
+export function updateExpense(id: number, body: ExpenseUpdate) {
+  return apiFetch<Expense>(`/api/expenses/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+}
+
+export function deleteExpense(id: number) {
+  return apiFetch<void>(`/api/expenses/${id}`, { method: 'DELETE' });
+}
+
+/** source ของรูปสำหรับ expo-image — แนบ token ไปกับ request รูปด้วย (ไม่งั้นได้ 401) */
+export async function expenseImageSource(id: number, thumb = false) {
+  const { serverUrl, appToken } = await loadSettings();
+  return { uri: `${serverUrl}/api/expenses/${id}/image${thumb ? '?thumb=true' : ''}`, headers: { 'X-App-Token': appToken } };
 }
 
 /** อัปโหลด bytes ของรูป → upload_id */

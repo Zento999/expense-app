@@ -1,26 +1,23 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { Image } from 'expo-image';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, ToastAndroid, View } from 'react-native';
+import { Pressable, StyleSheet, Text, ToastAndroid, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AmountSheet } from '@/components/amount-sheet';
-import { CategoryGrid } from '@/components/category-grid';
+import { ExpenseForm, type FormValues } from '@/components/expense-form';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
-import { formatTyped, isValidAmount, toApiAmount } from '@/lib/amount';
-import { ApiError, createExpense, describeError, getCategories, readUpload, uploadImage } from '@/lib/api';
-import { dateTimeLabel } from '@/lib/date';
+import { formatTyped } from '@/lib/amount';
+import { ApiError, createExpense, describeError, readUpload, uploadImage } from '@/lib/api';
 import { pickImage, takePickedImage, type ImageSource, type PickedImage } from '@/lib/images';
-import { getLastCategoryId, setLastCategoryId } from '@/lib/prefs';
-import type { Category, ReadResult, ScanKind } from '@/lib/types';
+import { setLastCategoryId } from '@/lib/prefs';
+import type { ReadResult, ScanKind } from '@/lib/types';
 
 type Phase = 'pick' | 'reading' | 'review';
 
-const TEXT: Record<ScanKind, { title: string; payee: string }> = {
-  slip: { title: 'สลิปโอนเงิน', payee: 'จ่ายให้' },
-  receipt: { title: 'บิล / ใบเสร็จ', payee: 'ร้านค้า' },
+const TEXT: Record<ScanKind, { title: string; payee: string; placeholder: string; docName: string }> = {
+  slip: { title: 'สลิปโอนเงิน', payee: 'จ่ายให้', placeholder: 'ชื่อผู้รับ / ร้าน', docName: 'สลิป' },
+  receipt: { title: 'บิล / ใบเสร็จ', payee: 'ร้านค้า', placeholder: 'ชื่อร้าน', docName: 'บิล' },
 };
 
 function toast(message: string) {
@@ -37,11 +34,6 @@ function readErrorMessage(e: unknown): string {
   return 'AI อ่านไม่สำเร็จ — กรอกเองได้เลย';
 }
 
-/** ✨ บอกว่าช่องนี้ AI กรอกให้ */
-function AiMark({ show }: { show: boolean }) {
-  return show ? <Ionicons name="sparkles" size={14} color={Colors.primary} /> : null;
-}
-
 export default function ScanScreen() {
   // uri = รูปที่เลือกมาแล้วจาก bottom sheet (bytes ฝากไว้ใน images.ts)
   // ถ้าไม่มี (หรือหาย เช่นหลัง reload แอป) จะเริ่มที่หน้าเลือกรูป
@@ -54,18 +46,8 @@ export default function ScanScreen() {
   const [imageUri, setImageUri] = useState<string | null>(initialImage?.uri ?? null);
   const [uploadId, setUploadId] = useState<string | null>(null);
   const [ai, setAi] = useState<ReadResult | null>(null);
-  const skipAi = useRef(false);
-
-  const [categories, setCategories] = useState<Category[] | null>(null);
-  const [categoryId, setCategoryId] = useState<number | null>(null);
-  const [amount, setAmount] = useState('');
-  const [payee, setPayee] = useState('');
-  const [note, setNote] = useState('');
-  const [spentAt, setSpentAt] = useState(new Date());
-
-  const [amountOpen, setAmountOpen] = useState(false);
-  const [zoomOpen, setZoomOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const skipAi = useRef(false);
 
   /** อัปโหลด → ให้ AI อ่าน → ไปหน้าตรวจ (setState ทั้งหมดอยู่ใน callback หลังงานเสร็จ) */
   function processImage(image: PickedImage) {
@@ -76,7 +58,7 @@ export default function ScanScreen() {
         if (skipAi.current) return; // ผู้ใช้กด "กรอกเองแทน" ไปแล้ว
         try {
           const result = await readUpload(id, kind);
-          if (!skipAi.current) applyAi(result);
+          if (!skipAi.current) setAi(result);
         } catch (e) {
           if (!skipAi.current) toast(readErrorMessage(e));
         }
@@ -105,15 +87,6 @@ export default function ScanScreen() {
     processImage(image);
   }
 
-  function applyAi(r: ReadResult) {
-    setAi(r);
-    if (r.amount) setAmount(String(r.amount));
-    if (r.payee) setPayee(r.payee);
-    if (r.note) setNote(r.note);
-    if (r.spent_at) setSpentAt(new Date(r.spent_at));
-    if (r.category_id) setCategoryId(r.category_id);
-  }
-
   function enterManually() {
     // รูปยังอัปโหลดต่อเบื้องหลัง (ต้องใช้แนบตอนบันทึก) แค่ไม่รอ AI
     skipAi.current = true;
@@ -121,60 +94,26 @@ export default function ScanScreen() {
   }
 
   useEffect(() => {
-    Promise.all([getCategories(), getLastCategoryId()]).then(
-      ([cats, lastId]) => {
-        setCategories(cats);
-        const fallback = cats.some((c) => c.id === lastId) ? lastId : (cats[0]?.id ?? null);
-        setCategoryId((current) => current ?? fallback); // ถ้า AI เลือกหมวดมาก่อนแล้ว ไม่ทับ
-      },
-      () => toast('โหลดหมวดหมู่ไม่ได้'),
-    );
     if (initialImage) processImage(initialImage);
     // ทำครั้งเดียวตอนเปิดหน้า
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function pickDateTime() {
-    DateTimePickerAndroid.open({
-      value: spentAt,
-      mode: 'date',
-      maximumDate: new Date(),
-      // เลือกวันเสร็จ → เปิดตัวเลือกเวลาต่อ (กดยกเลิก = ไม่เปลี่ยนอะไร)
-      onValueChange: (_event, day) => {
-        DateTimePickerAndroid.open({
-          value: day,
-          mode: 'time',
-          is24Hour: true,
-          onValueChange: (_e, time) => setSpentAt(time),
-        });
-      },
-    });
-  }
-
-  async function onSave() {
-    if (!isValidAmount(amount)) {
-      toast('ใส่จำนวนเงินก่อน');
-      setAmountOpen(true);
-      return;
-    }
-    if (!uploadId) {
-      toast('รอรูปอัปโหลดเสร็จก่อน');
-      return;
-    }
-    if (categoryId === null) return;
+  async function save(values: FormValues) {
+    if (!uploadId) return;
     setSaving(true);
     try {
       await createExpense({
-        amount: toApiAmount(amount),
-        category_id: categoryId,
+        amount: values.amount,
+        category_id: values.categoryId,
         source: kind,
-        spent_at: spentAt.toISOString(),
-        payee: payee.trim() || null,
-        note: note.trim() || null,
+        spent_at: values.spentAt.toISOString(),
+        payee: values.payee,
+        note: values.note,
         upload_id: uploadId,
       });
-      await setLastCategoryId(categoryId);
-      ToastAndroid.show(`บันทึก ฿${formatTyped(toApiAmount(amount))} แล้ว`, ToastAndroid.SHORT);
+      await setLastCategoryId(values.categoryId);
+      ToastAndroid.show(`บันทึก ฿${formatTyped(values.amount)} แล้ว`, ToastAndroid.SHORT);
       router.back();
     } catch (e) {
       toast(describeError(e, 'บันทึก'));
@@ -213,7 +152,7 @@ export default function ScanScreen() {
           <View style={styles.sparkleCircle}>
             <Ionicons name="sparkles" size={24} color={Colors.text} />
           </View>
-          <Text style={styles.readingTitle}>AI กำลังอ่าน{kind === 'slip' ? 'สลิป' : 'บิล'}…</Text>
+          <Text style={styles.readingTitle}>AI กำลังอ่าน{text.docName}…</Text>
           <Text style={styles.readingHint}>ประมาณ 3–10 วินาที</Text>
           <Pressable onPress={enterManually} style={({ pressed }) => [styles.skip, pressed && styles.pressed]}>
             <Text style={styles.skipText}>กรอกเองแทน</Text>
@@ -223,122 +162,26 @@ export default function ScanScreen() {
     );
   }
 
-  const confident = ai?.confidence === 'high';
   return (
     <SafeAreaView style={styles.flex} edges={['bottom']}>
       {header}
-      <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-        <View style={styles.topRow}>
-          <Pressable onPress={() => setZoomOpen(true)} accessibilityLabel="ดูรูปเต็ม">
-            {imageUri && <Image source={{ uri: imageUri }} style={styles.thumb} contentFit="cover" />}
-            <View style={styles.zoomBadge}>
-              <Ionicons name="expand-outline" size={14} color={Colors.text} />
-            </View>
-          </Pressable>
-          <View style={styles.flex}>
-            <View style={styles.labelRow}>
-              <Text style={styles.label}>จำนวนเงิน</Text>
-              <AiMark show={ai?.amount != null} />
-            </View>
-            <Pressable onPress={() => setAmountOpen(true)} accessibilityLabel="แก้จำนวนเงิน">
-              <Text style={styles.amount} numberOfLines={1} adjustsFontSizeToFit>
-                ฿{amount ? formatTyped(toApiAmount(amount)) : '0'}
-              </Text>
-            </Pressable>
-            {ai && (
-              <View style={[styles.badge, { backgroundColor: confident ? '#E8F3EA' : Colors.butter }]}>
-                <Ionicons
-                  name={confident ? 'checkmark-circle' : 'alert-circle'}
-                  size={14}
-                  color={confident ? Colors.success : Colors.text}
-                />
-                <Text style={styles.badgeText}>{confident ? 'AI มั่นใจ' : 'ตรวจยอดอีกครั้ง'}</Text>
-              </View>
-            )}
-          </View>
-        </View>
-
-        {ai?.doc_type === 'other' && (
-          <Text style={styles.warning}>รูปนี้ไม่เหมือน{kind === 'slip' ? 'สลิปโอนเงิน' : 'บิล'} — ตรวจข้อมูลให้ดีก่อนบันทึก</Text>
-        )}
-
-        <View style={styles.labelRow}>
-          <Text style={styles.label}>{text.payee}</Text>
-          <AiMark show={ai?.payee != null} />
-        </View>
-        <TextInput
-          style={styles.input}
-          value={payee}
-          onChangeText={setPayee}
-          placeholder={kind === 'slip' ? 'ชื่อผู้รับ / ร้าน' : 'ชื่อร้าน'}
-          placeholderTextColor={Colors.textSecondary}
-          maxLength={200}
-        />
-
-        <View style={styles.labelRow}>
-          <Text style={styles.label}>หมวด</Text>
-          {ai?.category_source === 'history' ? (
-            <>
-              <Ionicons name="time-outline" size={14} color={Colors.primary} />
-              <Text style={styles.label}>ตามที่เคยบันทึกร้านนี้</Text>
-            </>
-          ) : (
-            <AiMark show={ai?.category_id != null} />
-          )}
-        </View>
-        {categories ? (
-          <CategoryGrid categories={categories} selectedId={categoryId} onSelect={setCategoryId} />
-        ) : (
-          <ActivityIndicator color={Colors.primary} />
-        )}
-
-        <View style={styles.labelRow}>
-          <Text style={styles.label}>วันเวลา</Text>
-          <AiMark show={ai?.spent_at != null} />
-        </View>
-        <Pressable onPress={pickDateTime} style={styles.input}>
-          <View style={styles.inline}>
-            <Ionicons name="calendar-outline" size={16} color={Colors.text} />
-            <Text style={styles.inputText}>{dateTimeLabel(spentAt)}</Text>
-          </View>
-        </Pressable>
-
-        <View style={styles.labelRow}>
-          <Text style={styles.label}>โน้ต</Text>
-          <AiMark show={ai?.note != null} />
-        </View>
-        <TextInput
-          style={styles.input}
-          value={note}
-          onChangeText={setNote}
-          placeholder="เพิ่มโน้ต"
-          placeholderTextColor={Colors.textSecondary}
-          maxLength={1000}
-        />
-      </ScrollView>
-
-      <View style={styles.bottom}>
-        <Pressable
-          onPress={onSave}
-          disabled={saving}
-          style={({ pressed }) => [styles.save, !isValidAmount(amount) && styles.saveDim, (pressed || saving) && styles.pressed]}>
-          {saving ? (
-            <ActivityIndicator color={Colors.text} />
-          ) : (
-            <Text style={styles.saveText}>
-              {!uploadId ? 'กำลังอัปโหลดรูป…' : isValidAmount(amount) ? `บันทึก ฿${formatTyped(toApiAmount(amount))}` : 'บันทึก'}
-            </Text>
-          )}
-        </Pressable>
-      </View>
-
-      <AmountSheet visible={amountOpen} value={amount} onChange={setAmount} onClose={() => setAmountOpen(false)} />
-
-      <Modal visible={zoomOpen} transparent animationType="fade" onRequestClose={() => setZoomOpen(false)}>
-        <Pressable style={styles.zoomBackdrop} onPress={() => setZoomOpen(false)} accessibilityLabel="ปิดรูป">
-          {imageUri && <Image source={{ uri: imageUri }} style={styles.zoomImage} contentFit="contain" />}
-        </Pressable>
-      </Modal>
+      <ExpenseForm
+        initial={{
+          amount: ai?.amount ? String(ai.amount) : undefined,
+          categoryId: ai?.category_id,
+          payee: ai?.payee,
+          note: ai?.note,
+          spentAt: ai?.spent_at ? new Date(ai.spent_at) : undefined,
+        }}
+        image={imageUri ? { uri: imageUri } : null}
+        ai={ai}
+        payeeLabel={text.payee}
+        payeePlaceholder={text.placeholder}
+        warning={ai?.doc_type === 'other' ? `รูปนี้ไม่เหมือน${text.title} — ตรวจข้อมูลให้ดีก่อนบันทึก` : null}
+        saving={saving}
+        blockedText={uploadId ? null : 'กำลังอัปโหลดรูป…'}
+        onSubmit={save}
+      />
     </SafeAreaView>
   );
 }
@@ -366,7 +209,6 @@ const styles = StyleSheet.create({
   },
   bigButtonAlt: { backgroundColor: Colors.butter },
   bigButtonText: { fontSize: FontSize.body, fontWeight: '700', color: Colors.text },
-
   readingImage: { flex: 1, margin: Spacing.four, opacity: 0.45 },
   readingCard: { alignItems: 'center', paddingBottom: Spacing.five, gap: Spacing.one },
   sparkleCircle: {
@@ -390,57 +232,5 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   skipText: { color: Colors.text, fontSize: FontSize.body },
-
-  form: { padding: Spacing.three, gap: Spacing.two },
-  topRow: { flexDirection: 'row', gap: Spacing.three, alignItems: 'center' },
-  thumb: { width: 72, height: 96, borderRadius: Radius.sm, borderWidth: 1, borderColor: Colors.lemon },
-  zoomBadge: {
-    position: 'absolute',
-    right: 4,
-    bottom: 4,
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.full,
-    padding: 3,
-  },
-  labelRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one, marginTop: Spacing.two },
-  label: { fontSize: FontSize.caption, color: Colors.textSecondary },
-  amount: { fontSize: 34, fontWeight: '800', color: Colors.text },
-  badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: Spacing.one,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: 2,
-  },
-  badgeText: { fontSize: FontSize.caption, color: Colors.text },
-  warning: {
-    backgroundColor: Colors.butter,
-    borderRadius: Radius.sm,
-    padding: Spacing.two,
-    color: Colors.text,
-    fontSize: FontSize.caption,
-  },
-  input: {
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.lemon,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: 10,
-    fontSize: FontSize.body,
-    color: Colors.text,
-  },
-  inline: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  inputText: { fontSize: FontSize.body, color: Colors.text },
-
-  bottom: { backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.lemon, padding: Spacing.three },
-  save: { height: 58, borderRadius: Radius.lg, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
-  saveDim: { backgroundColor: Colors.lemon },
-  saveText: { fontSize: FontSize.title, fontWeight: '700', color: Colors.text },
   pressed: { opacity: 0.7 },
-
-  zoomBackdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.9)', justifyContent: 'center' },
-  zoomImage: { flex: 1 },
 });
