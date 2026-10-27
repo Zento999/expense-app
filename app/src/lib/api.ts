@@ -1,4 +1,3 @@
-import { toJpegBytes } from '@/lib/images';
 import { loadSettings } from '@/lib/settings';
 import type { Category, Expense, ExpenseCreate, ReadResult, ScanKind } from '@/lib/types';
 
@@ -55,12 +54,11 @@ export function createExpense(body: ExpenseCreate) {
   return apiFetch<Expense>('/api/expenses', { method: 'POST', body: JSON.stringify(body) });
 }
 
-/** อัปโหลดรูปจากเครื่อง (uri ของไฟล์) → upload_id */
-export async function uploadImage(uri: string): Promise<string> {
-  const bytes = await toJpegBytes(uri);
+/** อัปโหลด bytes ของรูป → upload_id */
+export async function uploadImage(bytes: Uint8Array): Promise<string> {
   const form = new FormData();
   // SDK 58 ใช้ expo/fetch เป็น fetch หลัก: ไม่รับแบบเก่า { uri, name, type }
-  // แต่รับ object ที่มี bytes() — ส่ง bytes ที่เตรียมไว้แล้วตรงๆ ไม่ต้องอ่านไฟล์ซ้ำ
+  // แต่รับ object ที่มี bytes() — ส่ง bytes ที่ได้จาก ImagePicker ตรงๆ ไม่ต้องเปิดไฟล์
   const part = { name: 'image.jpg', type: 'image/jpeg', bytes: async () => bytes };
   form.append('file', part as unknown as Blob);
   const { upload_id } = await apiFetch<{ upload_id: string }>('/api/uploads', { method: 'POST', body: form });

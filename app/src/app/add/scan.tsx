@@ -12,7 +12,7 @@ import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { formatTyped, isValidAmount, toApiAmount } from '@/lib/amount';
 import { ApiError, createExpense, describeError, getCategories, readUpload, uploadImage } from '@/lib/api';
 import { dateTimeLabel } from '@/lib/date';
-import { pickImage, type ImageSource } from '@/lib/images';
+import { pickImage, takePickedImage, type ImageSource, type PickedImage } from '@/lib/images';
 import { getLastCategoryId, setLastCategoryId } from '@/lib/prefs';
 import type { Category, ReadResult, ScanKind } from '@/lib/types';
 
@@ -43,14 +43,15 @@ function AiMark({ show }: { show: boolean }) {
 }
 
 export default function ScanScreen() {
-  // uri = รูปที่เลือกมาแล้วจาก bottom sheet (ถ้าไม่มี จะเริ่มที่หน้าเลือกรูป)
+  // uri = รูปที่เลือกมาแล้วจาก bottom sheet (bytes ฝากไว้ใน images.ts)
+  // ถ้าไม่มี (หรือหาย เช่นหลัง reload แอป) จะเริ่มที่หน้าเลือกรูป
   const params = useLocalSearchParams<{ kind?: string; uri?: string }>();
   const kind: ScanKind = params.kind === 'receipt' ? 'receipt' : 'slip';
-  const initialUri = typeof params.uri === 'string' && params.uri ? params.uri : null;
   const text = TEXT[kind];
+  const [initialImage] = useState(() => (typeof params.uri === 'string' ? takePickedImage(params.uri) : null));
 
-  const [phase, setPhase] = useState<Phase>(initialUri ? 'reading' : 'pick');
-  const [imageUri, setImageUri] = useState<string | null>(initialUri);
+  const [phase, setPhase] = useState<Phase>(initialImage ? 'reading' : 'pick');
+  const [imageUri, setImageUri] = useState<string | null>(initialImage?.uri ?? null);
   const [uploadId, setUploadId] = useState<string | null>(null);
   const [ai, setAi] = useState<ReadResult | null>(null);
   const skipAi = useRef(false);
@@ -67,9 +68,9 @@ export default function ScanScreen() {
   const [saving, setSaving] = useState(false);
 
   /** อัปโหลด → ให้ AI อ่าน → ไปหน้าตรวจ (setState ทั้งหมดอยู่ใน callback หลังงานเสร็จ) */
-  function processImage(uri: string) {
+  function processImage(image: PickedImage) {
     skipAi.current = false;
-    uploadImage(uri).then(
+    uploadImage(image.bytes).then(
       async (id) => {
         setUploadId(id);
         if (skipAi.current) return; // ผู้ใช้กด "กรอกเองแทน" ไปแล้ว
@@ -91,17 +92,17 @@ export default function ScanScreen() {
 
   /** ปุ่มในหน้าเลือกรูป (กรณีเปิดหน้านี้มาโดยยังไม่มีรูป หรืออัปโหลดพลาดแล้วเลือกใหม่) */
   async function start(source: ImageSource) {
-    let uri: string | null;
+    let image: PickedImage | null;
     try {
-      uri = await pickImage(source);
+      image = await pickImage(source);
     } catch (e) {
       toast(e instanceof Error ? e.message : 'เปิดรูปไม่ได้');
       return;
     }
-    if (!uri) return; // ยกเลิก → อยู่หน้าเลือกรูปต่อ
-    setImageUri(uri);
+    if (!image) return; // ยกเลิก → อยู่หน้าเลือกรูปต่อ
+    setImageUri(image.uri);
     setPhase('reading');
-    processImage(uri);
+    processImage(image);
   }
 
   function applyAi(r: ReadResult) {
@@ -128,7 +129,7 @@ export default function ScanScreen() {
       },
       () => toast('โหลดหมวดหมู่ไม่ได้'),
     );
-    if (initialUri) processImage(initialUri);
+    if (initialImage) processImage(initialImage);
     // ทำครั้งเดียวตอนเปิดหน้า
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

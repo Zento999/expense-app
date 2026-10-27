@@ -1,37 +1,43 @@
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 
 export type ImageSource = 'library' | 'camera';
 
-// ย่อบนมือถือก่อนส่ง: รูปกล้อง 12MP (~4MB) → ~300KB อัปโหลดผ่าน Tailscale เร็วขึ้นมาก
-// 1600px ยังอ่านตัวเลขในสลิปได้ชัด (backend ย่ออีกรอบเหลือ 2000px อยู่แล้ว จึงไม่เสียอะไร)
-const MAX_SIDE = 1600;
+/** รูปที่เลือกแล้ว: uri ไว้แสดงตัวอย่าง, bytes ไว้อัปโหลด */
+export type PickedImage = { uri: string; bytes: Uint8Array };
 
-/** เลือก/ถ่ายรูป คืน uri ไว้แสดงตัวอย่าง (null = ผู้ใช้ยกเลิก) */
-export async function pickImage(source: ImageSource): Promise<string | null> {
+/**
+ * เลือก/ถ่ายรูป (null = ผู้ใช้ยกเลิก)
+ *
+ * ขอ bytes จาก ImagePicker ตรงๆ (base64) แทนการเปิดไฟล์จาก uri ทีหลัง — ใน Expo Go
+ * path ของไฟล์มีโฟลเดอร์ชื่อ "%40anonymous%2F..." ที่ทำให้โมดูลอื่นเปิดไฟล์ไม่ได้
+ * (expo-file-system: Missing 'READ' permission / ImageManipulator: Loading bitmap failed)
+ */
+export async function pickImage(source: ImageSource): Promise<PickedImage | null> {
   if (source === 'camera') {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) throw new Error('ไม่ได้รับอนุญาตให้ใช้กล้อง');
   }
-  const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 1 };
+  // quality 0.7: รูปกล้อง 12MP เหลือ ~1–2MB ตัวเลขในสลิปยังคมชัด (backend ย่อเหลือ 2000px อีกรอบ)
+  const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.7, base64: true };
   const result =
     source === 'camera' ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
-  return result.canceled ? null : result.assets[0].uri;
+  if (result.canceled) return null;
+
+  const { uri, base64 } = result.assets[0];
+  if (!base64) throw new Error('อ่านรูปไม่สำเร็จ');
+  return { uri, bytes: Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)) };
 }
 
-/**
- * ย่อรูปแล้วคืนเป็น bytes ของ JPEG สำหรับอัปโหลด
- * ขอเป็น base64 จาก ImageManipulator ตรงๆ แทนการอ่านไฟล์ เพราะใน Expo Go
- * expo-file-system ไม่มีสิทธิ์อ่านไฟล์ที่ ImageManipulator เซฟไว้ (Missing 'READ' permission)
- */
-export async function toJpegBytes(uri: string): Promise<Uint8Array> {
-  let image = await ImageManipulator.manipulate(uri).renderAsync();
-  if (Math.max(image.width, image.height) > MAX_SIDE) {
-    const ctx = ImageManipulator.manipulate(image);
-    ctx.resize(image.width >= image.height ? { width: MAX_SIDE } : { height: MAX_SIDE });
-    image = await ctx.renderAsync();
-  }
-  const { base64 } = await image.saveAsync({ format: SaveFormat.JPEG, compress: 0.85, base64: true });
-  if (!base64) throw new Error('แปลงรูปไม่สำเร็จ');
-  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+// ส่งรูปจาก bottom sheet ไปหน้าอ่านสลิป: route params ส่งได้แค่ข้อความสั้นๆ
+// เลยส่ง uri ไปทาง params แล้วฝาก bytes ไว้ที่นี่ให้หน้าปลายทางมารับ (รับแล้วลบทิ้ง)
+const pending = new Map<string, Uint8Array>();
+
+export function holdPickedImage(image: PickedImage) {
+  pending.set(image.uri, image.bytes);
+}
+
+export function takePickedImage(uri: string): PickedImage | null {
+  const bytes = pending.get(uri);
+  pending.delete(uri);
+  return bytes ? { uri, bytes } : null;
 }

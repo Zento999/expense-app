@@ -4,7 +4,7 @@ import { Modal, Pressable, StyleSheet, Text, ToastAndroid, View } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
-import { pickImage, type ImageSource } from '@/lib/images';
+import { holdPickedImage, pickImage, type ImageSource } from '@/lib/images';
 
 type Option = {
   key: 'slip' | 'receipt' | 'cash';
@@ -37,8 +37,10 @@ export function AddSheet({ visible, onClose }: Props) {
     }
     // เปิดแกลเลอรี/กล้องเลย แล้วค่อยไปหน้าอ่าน — แตะน้อยลง 1 ครั้ง
     try {
-      const uri = await pickImage(SOURCE[option.key]);
-      if (uri) router.push({ pathname: '/add/scan', params: { kind: option.key, uri } });
+      const image = await pickImage(SOURCE[option.key]);
+      if (!image) return;
+      holdPickedImage(image);
+      router.push({ pathname: '/add/scan', params: { kind: option.key, uri: image.uri } });
     } catch (e) {
       ToastAndroid.show(e instanceof Error ? e.message : 'เปิดรูปไม่ได้', ToastAndroid.LONG);
     }
