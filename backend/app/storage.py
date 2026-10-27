@@ -4,6 +4,7 @@
 รูปใน tmp/ ที่ไม่ถูกบันทึกภายใน 24 ชม. จะถูกลบทิ้งเอง
 """
 
+import json
 import re
 import shutil
 import time
@@ -42,7 +43,7 @@ def _save_jpeg(img: Image.Image, path: Path, max_side: int, quality: int) -> Non
 
 def _sweep_tmp() -> None:
     cutoff = time.time() - TMP_TTL_SECONDS
-    for p in TMP.glob("*.jpg"):
+    for p in [*TMP.glob("*.jpg"), *TMP.glob("*.json")]:
         if p.stat().st_mtime < cutoff:
             p.unlink(missing_ok=True)
 
@@ -77,6 +78,21 @@ def upload_path(upload_id: str) -> Path:
     if not path.exists():
         raise ImageError("upload not found or expired")
     return path
+
+
+def save_ai_result(upload_id: str, result: dict) -> None:
+    """เก็บผลที่ AI อ่านได้ไว้คู่กับรูป — ตอนบันทึกจะดึงไปใส่ ai_data เอง (ไม่ต้องเชื่อค่าที่แอปส่งมา)"""
+    upload_path(upload_id)  # ตรวจ id + มีรูปจริง
+    (TMP / f"{upload_id}.json").write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+
+
+def pop_ai_result(upload_id: str) -> dict | None:
+    path = TMP / f"{upload_id}.json"
+    if not _UPLOAD_ID.match(upload_id) or not path.exists():
+        return None
+    result = json.loads(path.read_text(encoding="utf-8"))
+    path.unlink()
+    return result
 
 
 def attach(upload_id: str, spent_at: datetime) -> str:

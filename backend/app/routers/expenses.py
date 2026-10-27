@@ -9,7 +9,7 @@ from ..config import BKK
 from ..deps import get_db, require_token
 from ..models import Category, Expense
 from ..schemas import ExpenseCreate, ExpenseList, ExpenseOut, ExpenseUpdate
-from ..storage import ImageError, attach, delete_image, image_file
+from ..storage import ImageError, attach, delete_image, image_file, pop_ai_result
 
 router = APIRouter(prefix="/api/expenses", tags=["expenses"], dependencies=[Depends(require_token)])
 
@@ -80,6 +80,8 @@ def create_expense(body: ExpenseCreate, db: Session = Depends(get_db)):
             expense.image_path = attach(body.upload_id, expense.spent_at)
         except ImageError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
+        # ผลดิบจาก AI (ถ้าเคยกดให้อ่าน) เก็บไว้เทียบทีหลังว่า AI อ่านถูกแค่ไหน
+        expense.ai_data = pop_ai_result(body.upload_id)
 
     db.add(expense)
     try:

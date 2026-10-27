@@ -13,5 +13,10 @@ class Settings(BaseSettings):
     app_token: str
     receipts_dir: str = "/data/receipts"
 
+    # AI อ่านสลิป (ว่าง = ปิดฟีเจอร์ AI แต่แอปยังใช้ได้ปกติ)
+    anthropic_api_key: str = ""
+    ai_model: str = "claude-opus-5-5"
+    ai_effort: str = "medium"
+
 
 settings = Settings()

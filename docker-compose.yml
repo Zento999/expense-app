@@ -30,6 +30,10 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://expense:${POSTGRES_PASSWORD}@db:5432/expense
       APP_TOKEN: ${APP_TOKEN:?ต้องตั้ง APP_TOKEN ใน .env}
+      # ไม่บังคับ: ว่างไว้ = ปิด AI อ่านสลิป (บันทึกเงินสดยังใช้ได้)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-claude-opus-5-5}
+      AI_EFFORT: ${AI_EFFORT:-medium}
       TZ: Asia/Bangkok
     volumes:
       # รูปสลิป/บิลเก็บเป็นไฟล์ธรรมดาบนคอม เปิดดูจาก Explorer ได้
