@@ -7,6 +7,20 @@ export function monthLabel(d: Date): string {
   return `${THAI_MONTHS[d.getMonth()]} ${d.getFullYear() + 543}`;
 }
 
+/** คำทักทายตามช่วงเวลา */
+export function greeting(d: Date): string {
+  const h = d.getHours();
+  if (h >= 5 && h < 11) return 'สวัสดีตอนเช้า ☀️';
+  if (h >= 11 && h < 16) return 'สวัสดีตอนบ่าย 🌤️';
+  if (h >= 16 && h < 19) return 'สวัสดีตอนเย็น 🌇';
+  return 'สวัสดีตอนค่ำ 🌙';
+}
+
+/** "อ. 27 ต.ค." */
+export function shortDate(d: Date): string {
+  return `${THAI_WEEKDAYS_SHORT[d.getDay()]} ${d.getDate()} ${THAI_MONTHS_SHORT[d.getMonth()]}`;
+}
+
 /** "2026-10" — รูปแบบที่ API ใช้กรองเดือน */
 export function monthKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;

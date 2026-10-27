@@ -10,7 +10,7 @@
     "android": {
       "package": "com.zento.expense",
       "adaptiveIcon": {
-        "backgroundColor": "#FFDD83",
+        "backgroundColor": "#F7C04A",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -24,7 +24,7 @@
         {
           "backgroundColor": "#F7C04A",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 140
         }
       ],
       "expo-secure-store",

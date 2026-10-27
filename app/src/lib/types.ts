@@ -68,6 +68,7 @@ export type Summary = {
   compare_day: number | null; // เทียบกับวันที่ 1..N ของเดือนก่อน (null = เทียบทั้งเดือน)
   prev_same_period_total: number;
   prev_month_total: number;
+  today_total: number; // ยอดวันนี้ (ไม่ขึ้นกับเดือนที่ดู)
   by_category: CategoryTotal[];
   months: MonthTotal[];
 };

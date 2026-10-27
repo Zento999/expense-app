@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
@@ -38,6 +38,7 @@ class SummaryOut(BaseModel):
     compare_day: int | None  # เทียบกับวันที่ 1..N ของเดือนก่อน (None = เทียบทั้งเดือน)
     prev_same_period_total: Total
     prev_month_total: Total
+    today_total: Total  # ยอดของวันนี้ (เวลาไทย) ไม่ขึ้นกับเดือนที่ดู — ใช้ในบรรทัดทักทาย
     by_category: list[CategoryTotal]  # เรียงยอดมาก→น้อย เฉพาะหมวดที่มีรายจ่ายเดือนนี้
     months: list[MonthTotal]  # 6 เดือนล่าสุด เก่า→ใหม่ (เดือนที่ไม่มีรายจ่าย = 0)
 
@@ -76,6 +77,8 @@ def get_summary(month: str = Query(pattern=MONTH_PATTERN, examples=["2026-10"]),
     count, total = _totals(db, start, end)
     _, prev_same = _totals(db, prev_start, prev_cutoff)
     _, prev_full = _totals(db, prev_start, start)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    _, today_total = _totals(db, today_start, today_start + timedelta(days=1))
 
     current = _by_category(db, start, end)
     previous = _by_category(db, prev_start, prev_cutoff)
@@ -119,6 +122,7 @@ def get_summary(month: str = Query(pattern=MONTH_PATTERN, examples=["2026-10"]),
         compare_day=now.day if is_current else None,
         prev_same_period_total=prev_same,
         prev_month_total=prev_full,
+        today_total=today_total,
         by_category=by_category,
         months=months,
     )
