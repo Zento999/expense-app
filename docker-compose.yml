@@ -1,0 +1,42 @@
+name: expense
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: expense
+      POSTGRES_USER: expense
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?ต้องตั้ง POSTGRES_PASSWORD ใน .env}
+      TZ: Asia/Bangkok
+    volumes:
+      # named volume: Postgres บน Windows bind mount มีปัญหาเรื่องสิทธิ์ไฟล์และช้า
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # เปิดเฉพาะในเครื่อง (ไว้ต่อด้วย DBeaver/psql) — 5432 ถูก Market Insights ใช้อยู่
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U expense -d expense"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://expense:${POSTGRES_PASSWORD}@db:5432/expense
+      APP_TOKEN: ${APP_TOKEN:?ต้องตั้ง APP_TOKEN ใน .env}
+      TZ: Asia/Bangkok
+    volumes:
+      # รูปสลิป/บิลเก็บเป็นไฟล์ธรรมดาบนคอม เปิดดูจาก Explorer ได้
+      - ./data/receipts:/data/receipts
+    ports:
+      # เปิดทุก interface เพื่อให้มือถือเข้าผ่าน Tailscale ได้ (Toolbox ใช้ 8787 อยู่)
+      - "8790:8000"
+
+volumes:
+  pgdata:
