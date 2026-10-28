@@ -76,14 +76,21 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}, timeoutM
 
 /** เช็คทั้งเครือข่าย (Tailscale) และ token ในคราวเดียว เพื่อบอกผู้ใช้ได้ว่าพังตรงไหน */
 export async function checkConnection(): Promise<ConnectionStatus> {
+  return (await checkConnectionDetail()).status;
+}
+
+/** เหมือน checkConnection แต่คืนข้อความ error จริงด้วย — หน้าตั้งค่าโชว์ให้เห็นว่าพังเพราะอะไร */
+export async function checkConnectionDetail(): Promise<{ status: ConnectionStatus; detail?: string }> {
   const { serverUrl, appToken } = await loadSettings();
-  if (!serverUrl || !appToken) return 'not-configured';
+  if (!serverUrl || !appToken) return { status: 'not-configured' };
   try {
     await apiFetch('/api/ping', {}, 5_000);
-    return 'ok';
+    return { status: 'ok' };
   } catch (e) {
-    if (e instanceof ApiError && e.status === 401) return 'bad-token';
-    return 'unreachable';
+    if (e instanceof ApiError && e.status === 401) return { status: 'bad-token' };
+    const cause = e instanceof NetworkError ? e.cause : e;
+    const detail = cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
+    return { status: 'unreachable', detail: `${serverUrl}\n${detail}` };
   }
 }
 

@@ -17,9 +17,16 @@ export async function loadSettings(): Promise<ServerSettings> {
   return { serverUrl: serverUrl ?? '', appToken: appToken ?? '' };
 }
 
+/** "100.78.142.97:8790/" → "http://100.78.142.97:8790" — พิมพ์ขาด http:// แอปจะสร้าง request ไม่ได้เลย */
+export function normalizeServerUrl(input: string): string {
+  const url = input.trim().replace(/\s+/g, '').replace(/\/+$/, '');
+  if (!url) return '';
+  return /^https?:\/\//i.test(url) ? url : `http://${url}`;
+}
+
 export async function saveSettings({ serverUrl, appToken }: ServerSettings) {
   await Promise.all([
-    SecureStore.setItemAsync(SERVER_URL_KEY, serverUrl.trim().replace(/\/+$/, '')),
+    SecureStore.setItemAsync(SERVER_URL_KEY, normalizeServerUrl(serverUrl)),
     SecureStore.setItemAsync(APP_TOKEN_KEY, appToken.trim()),
   ]);
 }

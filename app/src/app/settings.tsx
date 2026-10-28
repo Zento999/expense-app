@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
-import { checkConnection } from '@/lib/api';
+import { checkConnectionDetail } from '@/lib/api';
 import { loadSettings, saveSettings } from '@/lib/settings';
 
 const ERRORS = {
@@ -27,13 +27,16 @@ export default function SettingsScreen() {
   async function onSave() {
     setTesting(true);
     await saveSettings({ serverUrl, appToken });
-    const status = await checkConnection();
+    const saved = await loadSettings();
+    setServerUrl(saved.serverUrl); // โชว์ค่าที่บันทึกจริง (เช่นเติม http:// ให้แล้ว)
+    const { status, detail } = await checkConnectionDetail();
     setTesting(false);
     if (status === 'ok') {
       router.back();
     } else {
       const [title, body] = ERRORS[status];
-      Alert.alert(`บันทึกแล้ว แต่${title}`, body);
+      // รายละเอียด error จริงไว้ท้ายข้อความ — ใช้ใน APK ที่ไม่มีหน้าต่าง Metro ให้ดู log
+      Alert.alert(`บันทึกแล้ว แต่${title}`, detail ? `${body}\n\nรายละเอียด:\n${detail}` : body);
     }
   }
 
