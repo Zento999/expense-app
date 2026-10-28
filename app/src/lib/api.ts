@@ -48,14 +48,24 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}, timeoutM
   // body เป็น JSON string → ใส่ Content-Type เอง / เป็น FormData → ปล่อยให้ fetch ใส่ boundary ให้
   const jsonHeader: Record<string, string> = typeof init.body === 'string' ? { 'Content-Type': 'application/json' } : {};
   let res: Response;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    res = await fetch(`${serverUrl}${path}`, {
-      ...init,
-      headers: { ...jsonHeader, 'X-App-Token': appToken, ...init.headers },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    res = await Promise.race([
+      fetch(`${serverUrl}${path}`, {
+        ...init,
+        headers: { ...jsonHeader, 'X-App-Token': appToken, ...init.headers },
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+      // ตัวจับเวลาสำรอง: ถ้าการเชื่อมต่อค้างตอนเปิด socket บางที abort signal ไม่ตัดให้
+      // แอปจะหมุนโหลดไม่หยุด — ตัวนี้รับประกันว่าภายใน timeout จะได้ error เสมอ
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`timeout after ${timeoutMs}ms`)), timeoutMs + 1_000);
+      }),
+    ]);
   } catch (e) {
     throw new NetworkError(e); // ไม่มีคำตอบกลับมาเลย = ปัญหาการเชื่อมต่อ
+  } finally {
+    clearTimeout(timer);
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -69,13 +79,10 @@ export async function checkConnection(): Promise<ConnectionStatus> {
   const { serverUrl, appToken } = await loadSettings();
   if (!serverUrl || !appToken) return 'not-configured';
   try {
-    const res = await fetch(`${serverUrl}/api/ping`, {
-      headers: { 'X-App-Token': appToken },
-      signal: AbortSignal.timeout(5000),
-    });
-    if (res.status === 401) return 'bad-token';
-    return res.ok ? 'ok' : 'unreachable';
-  } catch {
+    await apiFetch('/api/ping', {}, 5_000);
+    return 'ok';
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 401) return 'bad-token';
     return 'unreachable';
   }
 }
