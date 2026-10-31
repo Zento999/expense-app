@@ -1,4 +1,4 @@
-// รูปร่างข้อมูลให้ตรงกับ schemas.py ฝั่ง backend
+// รูปร่างข้อมูลที่หน้าจอใช้ (db.ts แปลงแถวจาก SQLite มาเป็นรูปแบบนี้)
 
 export type Category = {
   id: number;
@@ -21,21 +21,6 @@ export type Expense = {
   has_image: boolean;
   image_uri?: string | null; // รูปในเครื่อง (แอปแบบ offline)
 };
-
-export type ExpenseCreate = {
-  // ส่งเป็น string เช่น "65.50" — Decimal ฝั่ง Python แปลงจาก string ได้เป๊ะ ไม่ผ่าน float
-  amount: string;
-  category_id: number;
-  source?: Source;
-  spent_at?: string;
-  payee?: string | null;
-  note?: string | null;
-  upload_id?: string; // จาก POST /api/uploads — แนบรูปไปกับรายการ
-  client_id?: string; // UUID จากมือถือ: ส่งซ้ำได้โดยไม่เกิดรายการซ้ำ (ใช้กับคิวออฟไลน์)
-};
-
-/** PATCH: ส่งเฉพาะช่องที่จะแก้ */
-export type ExpenseUpdate = Partial<Pick<ExpenseCreate, 'amount' | 'category_id' | 'spent_at' | 'payee' | 'note'>>;
 
 export type ExpenseList = {
   items: Expense[];
@@ -75,16 +60,3 @@ export type Summary = {
 };
 
 export type ScanKind = 'slip' | 'receipt';
-
-/** ผลที่ AI อ่านจากรูป (ทุกช่องเป็น null ได้) */
-export type ReadResult = {
-  doc_type: 'transfer_slip' | 'receipt' | 'other';
-  amount: number | null;
-  spent_at: string | null;
-  payee: string | null;
-  category_id: number | null;
-  // history = หมวดเดียวกับที่เคยบันทึกให้ร้านนี้ / ai = AI เดาเอง
-  category_source: 'history' | 'ai' | null;
-  note: string | null;
-  confidence: 'high' | 'medium' | 'low';
-};

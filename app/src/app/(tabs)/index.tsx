@@ -108,11 +108,7 @@ export default function SummaryScreen() {
               {summary && ` · วันนี้ใช้ไป ${formatBaht(summary.today_total)}`}
             </Text>
           </View>
-          <Pressable onPress={() => router.push('/settings')} hitSlop={12} accessibilityLabel="ตั้งค่า">
-            <Ionicons name="settings-outline" size={24} color={Colors.text} />
-          </Pressable>
         </View>
-
 
         <MonthTotalCard
           month={month}

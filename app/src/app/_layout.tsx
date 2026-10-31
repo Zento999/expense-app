@@ -15,7 +15,6 @@ export default function RootLayout() {
           contentStyle: { backgroundColor: Colors.background },
         }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="settings" options={{ title: 'ตั้งค่า' }} />
         <Stack.Screen name="add/cash" options={{ title: 'เงินสด', presentation: 'modal' }} />
         <Stack.Screen name="add/scan" options={{ presentation: 'modal' }} />
         <Stack.Screen name="expense/[id]" options={{ title: 'รายละเอียด' }} />

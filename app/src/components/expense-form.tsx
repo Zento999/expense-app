@@ -9,13 +9,13 @@ import { CategoryGrid } from '@/components/category-grid';
 import { ImageViewer } from '@/components/image-viewer';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { formatTyped, isValidAmount, toApiAmount } from '@/lib/amount';
-import { getCategories } from '@/lib/db';
 import { dateTimeLabel } from '@/lib/date';
+import { getCategories } from '@/lib/db';
 import { getLastCategoryId } from '@/lib/prefs';
-import type { Category, ReadResult } from '@/lib/types';
+import type { Category } from '@/lib/types';
 
 export type FormValues = {
-  amount: string; // พร้อมส่ง API แล้ว เช่น "65.50"
+  amount: string; // ทศนิยม 2 ตำแหน่งเสมอ เช่น "65.50"
   categoryId: number;
   payee: string | null;
   note: string | null;
@@ -31,32 +31,14 @@ type Props = {
     spentAt?: Date;
   };
   image?: ImageSource | null;
-  ai?: ReadResult | null; // มี = แสดง ✨ ตรงช่องที่ AI กรอก
   payeeLabel: string;
   payeePlaceholder: string;
-  warning?: string | null;
   saving: boolean;
-  blockedText?: string | null; // ข้อความบนปุ่มตอนยังบันทึกไม่ได้ เช่น "กำลังอัปโหลดรูป…"
   onSubmit: (values: FormValues) => void;
 };
 
-/** ✨ บอกว่าช่องนี้ AI กรอกให้ */
-function AiMark({ show }: { show: boolean }) {
-  return show ? <Ionicons name="sparkles" size={14} color={Colors.primary} /> : null;
-}
-
-/** ฟอร์มตรวจ/แก้รายจ่าย — ใช้ทั้งหน้าตรวจหลัง AI อ่าน (บทที่ 6) และหน้าแก้ไขรายการเก่า (บทที่ 8) */
-export function ExpenseForm({
-  initial,
-  image,
-  ai,
-  payeeLabel,
-  payeePlaceholder,
-  warning,
-  saving,
-  blockedText,
-  onSubmit,
-}: Props) {
+/** ฟอร์มกรอก/แก้รายจ่าย — ใช้ทั้งหน้าแนบสลิป/บิล และหน้าแก้ไขรายการเก่า */
+export function ExpenseForm({ initial, image, payeeLabel, payeePlaceholder, saving, onSubmit }: Props) {
   const [categories, setCategories] = useState<Category[] | null>(null);
   const [categoryId, setCategoryId] = useState<number | null>(initial.categoryId ?? null);
   const [amount, setAmount] = useState(initial.amount ?? '');
@@ -71,7 +53,7 @@ export function ExpenseForm({
       ([cats, lastId]) => {
         setCategories(cats);
         const fallback = cats.some((c) => c.id === lastId) ? lastId : (cats[0]?.id ?? null);
-        setCategoryId((current) => current ?? fallback); // ค่าที่ส่งมา (AI/ของเดิม) มาก่อนเสมอ
+        setCategoryId((current) => current ?? fallback); // ค่าเดิมของรายการมาก่อนเสมอ
       },
       () => ToastAndroid.show('โหลดหมวดหมู่ไม่ได้', ToastAndroid.LONG),
     );
@@ -100,10 +82,6 @@ export function ExpenseForm({
       setAmountOpen(true);
       return;
     }
-    if (blockedText) {
-      ToastAndroid.show(blockedText, ToastAndroid.SHORT);
-      return;
-    }
     if (categoryId === null) return;
     onSubmit({
       amount: toApiAmount(amount),
@@ -114,7 +92,6 @@ export function ExpenseForm({
     });
   }
 
-  const confident = ai?.confidence === 'high';
   const valid = isValidAmount(amount);
   return (
     <>
@@ -129,34 +106,17 @@ export function ExpenseForm({
             </Pressable>
           )}
           <View style={styles.flex}>
-            <View style={styles.labelRow}>
-              <Text style={styles.label}>จำนวนเงิน</Text>
-              <AiMark show={ai?.amount != null} />
-            </View>
+            <Text style={[styles.label, styles.labelTop]}>จำนวนเงิน</Text>
             <Pressable onPress={() => setAmountOpen(true)} accessibilityLabel="แก้จำนวนเงิน">
               <Text style={styles.amount} numberOfLines={1} adjustsFontSizeToFit>
                 ฿{amount ? formatTyped(toApiAmount(amount)) : '0'}
               </Text>
             </Pressable>
-            {ai && (
-              <View style={[styles.badge, { backgroundColor: confident ? '#E8F3EA' : Colors.butter }]}>
-                <Ionicons
-                  name={confident ? 'checkmark-circle' : 'alert-circle'}
-                  size={14}
-                  color={confident ? Colors.success : Colors.text}
-                />
-                <Text style={styles.badgeText}>{confident ? 'AI มั่นใจ' : 'ตรวจยอดอีกครั้ง'}</Text>
-              </View>
-            )}
+            {!amount && <Text style={styles.hint}>แตะเพื่อใส่ยอดเงิน</Text>}
           </View>
         </View>
 
-        {warning && <Text style={styles.warning}>{warning}</Text>}
-
-        <View style={styles.labelRow}>
-          <Text style={styles.label}>{payeeLabel}</Text>
-          <AiMark show={ai?.payee != null} />
-        </View>
+        <Text style={styles.label}>{payeeLabel}</Text>
         <TextInput
           style={styles.input}
           value={payee}
@@ -166,27 +126,14 @@ export function ExpenseForm({
           maxLength={200}
         />
 
-        <View style={styles.labelRow}>
-          <Text style={styles.label}>หมวด</Text>
-          {ai?.category_source === 'history' ? (
-            <>
-              <Ionicons name="time-outline" size={14} color={Colors.primary} />
-              <Text style={styles.label}>ตามที่เคยบันทึกร้านนี้</Text>
-            </>
-          ) : (
-            <AiMark show={ai?.category_id != null} />
-          )}
-        </View>
+        <Text style={styles.label}>หมวด</Text>
         {categories ? (
           <CategoryGrid categories={categories} selectedId={categoryId} onSelect={setCategoryId} />
         ) : (
           <ActivityIndicator color={Colors.primary} />
         )}
 
-        <View style={styles.labelRow}>
-          <Text style={styles.label}>วันเวลา</Text>
-          <AiMark show={ai?.spent_at != null} />
-        </View>
+        <Text style={styles.label}>วันเวลา</Text>
         <Pressable onPress={pickDateTime} style={styles.input}>
           <View style={styles.inline}>
             <Ionicons name="calendar-outline" size={16} color={Colors.text} />
@@ -194,10 +141,7 @@ export function ExpenseForm({
           </View>
         </Pressable>
 
-        <View style={styles.labelRow}>
-          <Text style={styles.label}>โน้ต</Text>
-          <AiMark show={ai?.note != null} />
-        </View>
+        <Text style={styles.label}>โน้ต</Text>
         <TextInput
           style={styles.input}
           value={note}
@@ -216,9 +160,7 @@ export function ExpenseForm({
           {saving ? (
             <ActivityIndicator color={Colors.text} />
           ) : (
-            <Text style={styles.saveText}>
-              {blockedText ?? (valid ? `บันทึก ฿${formatTyped(toApiAmount(amount))}` : 'บันทึก')}
-            </Text>
+            <Text style={styles.saveText}>{valid ? `บันทึก ฿${formatTyped(toApiAmount(amount))}` : 'บันทึก'}</Text>
           )}
         </Pressable>
       </View>
@@ -242,26 +184,10 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     padding: 3,
   },
-  labelRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one, marginTop: Spacing.two },
-  label: { fontSize: FontSize.caption, color: Colors.textSecondary },
+  label: { fontSize: FontSize.caption, color: Colors.textSecondary, marginTop: Spacing.two },
+  labelTop: { marginTop: 0 },
   amount: { fontSize: 34, fontWeight: '800', color: Colors.text },
-  badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: Spacing.one,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: 2,
-  },
-  badgeText: { fontSize: FontSize.caption, color: Colors.text },
-  warning: {
-    backgroundColor: Colors.butter,
-    borderRadius: Radius.sm,
-    padding: Spacing.two,
-    color: Colors.text,
-    fontSize: FontSize.caption,
-  },
+  hint: { fontSize: FontSize.caption, color: Colors.textSecondary },
   input: {
     backgroundColor: Colors.surface,
     borderWidth: 1,
