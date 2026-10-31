@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 
-import type { Category, Expense, ExpenseList, ExpenseQuery, Source } from '@/lib/types';
+import type { Category, Expense, ExpenseList, ExpenseQuery, Source, Summary } from '@/lib/types';
 
 /**
  * ฐานข้อมูลในมือถือ (SQLite) — แอปทำงานได้เองโดยไม่ต้องมีเซิร์ฟเวอร์
@@ -212,6 +212,76 @@ export async function listExpenses({ month, q, categoryId, limit = 50, offset = 
     params,
   );
   return { items: rows.map(toExpense), total_count: totals?.n ?? 0, total_amount: (totals?.total ?? 0) / 100 };
+}
+
+const HISTORY_MONTHS = 6;
+
+/**
+ * สรุปเดือน (ย้ายตรรกะจาก backend/summary.py มาไว้ในเครื่อง)
+ * เดือนที่ยังไม่จบ เทียบกับ "ช่วงเดียวกัน" ของเดือนก่อน — วันที่ 27 เทียบกับวันที่ 1–27 ไม่ใช่ทั้งเดือน
+ */
+export async function getSummary(month: string): Promise<Summary> {
+  const db = await getDb();
+  const [y, m] = month.split('-').map(Number);
+  const start = new Date(y, m - 1, 1);
+  const end = new Date(y, m, 1);
+  const now = new Date();
+  const isCurrent = start <= now && now < end;
+  const prevStart = new Date(y, m - 2, 1);
+  const cutoff = isCurrent ? now : end;
+  const prevCutoff = new Date(Math.min(prevStart.getTime() + (cutoff.getTime() - start.getTime()), start.getTime()));
+
+  const totals = async (from: Date, to: Date) =>
+    (await db.getFirstAsync<{ n: number; total: number }>(
+      'SELECT COUNT(*) AS n, COALESCE(SUM(amount_satang), 0) AS total FROM expenses WHERE spent_at >= ? AND spent_at < ?',
+      from.toISOString(),
+      to.toISOString(),
+    )) ?? { n: 0, total: 0 };
+  const byCategory = async (from: Date, to: Date) =>
+    db.getAllAsync<{ category_id: number; n: number; total: number }>(
+      `SELECT category_id, COUNT(*) AS n, SUM(amount_satang) AS total FROM expenses
+       WHERE spent_at >= ? AND spent_at < ? GROUP BY category_id`,
+      from.toISOString(),
+      to.toISOString(),
+    );
+
+  const current = await totals(start, end);
+  const prevSame = await totals(prevStart, prevCutoff);
+  const prevFull = await totals(prevStart, start);
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const today = await totals(todayStart, new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
+
+  const categories = new Map((await getCategories()).map((c) => [c.id, c]));
+  const prevByCat = new Map((await byCategory(prevStart, prevCutoff)).map((r) => [r.category_id, r.total]));
+  const by_category = (await byCategory(start, end))
+    .map((r) => ({
+      category: categories.get(r.category_id)!,
+      total: r.total / 100,
+      count: r.n,
+      prev_total: (prevByCat.get(r.category_id) ?? 0) / 100,
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  const months = [];
+  for (let i = HISTORY_MONTHS - 1; i >= 0; i--) {
+    const from = new Date(y, m - 1 - i, 1);
+    const key = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}`;
+    months.push({ month: key, total: (await totals(from, new Date(y, m - i, 1))).total / 100 });
+  }
+
+  return {
+    month,
+    total: current.total / 100,
+    count: current.n,
+    is_current: isCurrent,
+    days: isCurrent ? now.getDate() : new Date(y, m, 0).getDate(),
+    compare_day: isCurrent ? now.getDate() : null,
+    prev_same_period_total: prevSame.total / 100,
+    prev_month_total: prevFull.total / 100,
+    today_total: today.total / 100,
+    by_category,
+    months,
+  };
 }
 
 export async function countExpenses(): Promise<number> {

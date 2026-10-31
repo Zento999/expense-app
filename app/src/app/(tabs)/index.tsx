@@ -5,15 +5,14 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, T
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CategoryBars } from '@/components/category-bars';
-import { ConnectionBadge } from '@/components/connection-badge';
 import { ExpenseRow } from '@/components/expense-row';
 import { MonthBars } from '@/components/month-bars';
 import { MonthTotalCard } from '@/components/month-total-card';
-import { PendingBanner } from '@/components/pending-banner';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { formatBaht } from '@/lib/amount';
-import { describeError, getCategories, getSummary, listExpenses } from '@/lib/api';
 import { addMonths, greeting, monthKey, shortDate, THAI_MONTHS_SHORT } from '@/lib/date';
+import { getSummary, listExpenses } from '@/lib/db';
+import { localError } from '@/lib/errors';
 import type { Expense, Summary } from '@/lib/types';
 
 const RECENT_COUNT = 3;
@@ -64,7 +63,7 @@ export default function SummaryScreen() {
         setError(null);
       })
       .catch((e) => {
-        if (seq === requestSeq.current) setError(describeError(e, 'โหลดสรุป'));
+        if (seq === requestSeq.current) setError(localError('โหลดสรุป', e));
       })
       .finally(() => {
         if (seq === requestSeq.current) setRefreshing(false);
@@ -75,8 +74,6 @@ export default function SummaryScreen() {
   useFocusEffect(
     useCallback(() => {
       load();
-      // อุ่นแคชหมวดหมู่ไว้ตอนออนไลน์ — ออฟไลน์ทีหลังหน้าเงินสดยังเลือกหมวดได้
-      getCategories().catch(() => {});
     }, [load]),
   );
 
@@ -116,8 +113,6 @@ export default function SummaryScreen() {
           </Pressable>
         </View>
 
-        <ConnectionBadge />
-        <PendingBanner onSynced={load} />
 
         <MonthTotalCard
           month={month}
