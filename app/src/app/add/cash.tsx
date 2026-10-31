@@ -2,16 +2,17 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, ToastAndroid, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, ToastAndroid, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CategoryGrid } from '@/components/category-grid';
 import { Numpad } from '@/components/numpad';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
-import { formatTyped, isValidAmount, pressKey, toApiAmount, type NumpadKey } from '@/lib/amount';
+import { formatBaht, formatTyped, isValidAmount, pressKey, toApiAmount, type NumpadKey } from '@/lib/amount';
 import { dayLabel, withCurrentTime } from '@/lib/date';
 import { addExpense, countExpenses, getCategories } from '@/lib/db';
 import { getLastCategoryId, setLastCategoryId } from '@/lib/prefs';
+import { getQuickPicks, type QuickPick } from '@/lib/stats';
 import type { Category } from '@/lib/types';
 
 export default function CashScreen() {
@@ -22,6 +23,7 @@ export default function CashScreen() {
   const [day, setDay] = useState(new Date());
   const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [picks, setPicks] = useState<QuickPick[]>([]);
 
   function loadCategories() {
     Promise.all([getCategories(), getLastCategoryId()]).then(
@@ -39,6 +41,9 @@ export default function CashScreen() {
 
   // setState เกิดใน callback หลังโหลดเสร็จ ไม่ใช่ทันทีใน effect (กันการ render ซ้อน)
   useEffect(loadCategories, []);
+  useEffect(() => {
+    getQuickPicks(new Date()).then(setPicks, (e) => console.warn('[cash] quick picks', e));
+  }, []);
 
   function retryLoad() {
     setLoadError(false);
@@ -56,6 +61,26 @@ export default function CashScreen() {
       maximumDate: new Date(), // บันทึกรายจ่ายล่วงหน้าไม่ได้
       onValueChange: (_event, selected) => setDay(selected),
     });
+  }
+
+  /** แตะชิป "จ่ายบ่อย" = บันทึกทันที (ใช้วันที่ที่เลือกอยู่) ไม่ต้องกดตัวเลข */
+  async function onQuickPick(p: QuickPick) {
+    setSaving(true);
+    try {
+      await addExpense({
+        amount: p.amount.toFixed(2),
+        categoryId: p.category.id,
+        source: 'cash',
+        spentAt: withCurrentTime(day),
+        payee: p.payee,
+      });
+      ToastAndroid.show(`บันทึก ${p.payee} ${formatBaht(p.amount)} แล้ว`, ToastAndroid.SHORT);
+      router.back();
+    } catch (e) {
+      console.warn('[cash] quick save', e);
+      ToastAndroid.show(`บันทึกไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`, ToastAndroid.LONG);
+      setSaving(false);
+    }
   }
 
   async function onSave() {
@@ -93,6 +118,25 @@ export default function CashScreen() {
         <Text style={styles.amount} numberOfLines={1} adjustsFontSizeToFit>
           ฿{formatTyped(amount)}
         </Text>
+
+        {picks.length > 0 && (
+          <View style={styles.picks}>
+            <Text style={styles.picksLabel}>จ่ายบ่อย · แตะครั้งเดียวบันทึกเลย</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.picksRow}>
+              {picks.map((p) => (
+                <Pressable
+                  key={`${p.payee}|${p.amount}|${p.category.id}`}
+                  onPress={() => onQuickPick(p)}
+                  disabled={saving}
+                  style={({ pressed }) => [styles.pick, pressed && styles.pressed]}>
+                  <Text style={styles.pickText}>
+                    {p.category.icon} {p.payee} {formatBaht(p.amount)}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
         {categories ? (
           <CategoryGrid categories={categories} selectedId={categoryId} onSelect={setCategoryId} />
@@ -154,6 +198,16 @@ const styles = StyleSheet.create({
   amountLabel: { textAlign: 'center', fontSize: FontSize.caption, color: Colors.textSecondary },
   amount: { textAlign: 'center', fontSize: 48, fontWeight: '800', color: Colors.text, marginTop: -Spacing.three },
   loading: { marginVertical: Spacing.five },
+  picks: { gap: Spacing.one },
+  picksLabel: { fontSize: FontSize.caption, color: Colors.textSecondary },
+  picksRow: { gap: Spacing.two },
+  pick: {
+    backgroundColor: Colors.butter,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  pickText: { fontSize: FontSize.caption, fontWeight: '600', color: Colors.text },
   error: {
     flexDirection: 'row',
     alignItems: 'center',
