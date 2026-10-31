@@ -17,6 +17,7 @@ import { getUpcomingBills, payBill, type DueBill } from '@/lib/bills';
 import { addMonths, greeting, monthKey, shortDate, THAI_MONTHS_SHORT } from '@/lib/date';
 import { getSummary, listExpenses } from '@/lib/db';
 import { localError } from '@/lib/errors';
+import { pendingRecapMonth } from '@/lib/recap';
 import { refreshRemindersQuietly } from '@/lib/reminders';
 import { budgetStatus, getBudget, getDailyTotals, getInsight, getStreak, type Insight } from '@/lib/stats';
 import type { Expense, Summary } from '@/lib/types';
@@ -32,6 +33,7 @@ type Extras = {
   insight: Insight | null;
   daily: Map<number, number>;
   bills: DueBill[];
+  recapMonth: string | null; // เดือนก่อนที่สรุปพร้อมให้ดู (7 วันแรกของเดือน)
 };
 
 type Compare = { text: string; icon: keyof typeof Ionicons.glyphMap; color: string };
@@ -87,9 +89,16 @@ export default function SummaryScreen() {
         if (seq === requestSeq.current) setRefreshing(false);
       });
     const today = new Date();
-    Promise.all([getBudget(), getStreak(today), getInsight(today), getDailyTotals(key), getUpcomingBills(today)]).then(
-      ([budget, streak, insight, daily, bills]) => {
-        if (seq === requestSeq.current) setExtras({ month: key, budget, streak: streak.days, insight, daily, bills });
+    Promise.all([
+      getBudget(),
+      getStreak(today),
+      getInsight(today),
+      getDailyTotals(key),
+      getUpcomingBills(today),
+      pendingRecapMonth(today),
+    ]).then(
+      ([budget, streak, insight, daily, bills, recapMonth]) => {
+        if (seq === requestSeq.current) setExtras({ month: key, budget, streak: streak.days, insight, daily, bills, recapMonth });
       },
       (e) => console.warn('[summary] extras', e),
     );
@@ -178,6 +187,13 @@ export default function SummaryScreen() {
             </View>
           )}
           {budget && <BudgetMeter status={budget} />}
+          {s && !s.is_current && s.count > 0 && (
+            <Pressable
+              onPress={() => router.push({ pathname: '/recap/[month]', params: { month: s.month } })}
+              style={styles.setBudget}>
+              <Text style={styles.setBudgetText}>🏆 ดูสรุปเดือนนี้ ›</Text>
+            </Pressable>
+          )}
           {s?.is_current && x && !x.budget && (
             <Pressable onPress={() => router.push('/settings')} style={styles.setBudget}>
               <Text style={styles.setBudgetText}>🎯 ตั้งงบรายเดือน ›</Text>
@@ -196,6 +212,18 @@ export default function SummaryScreen() {
                 <Text style={styles.emptyEmoji}>{x.insight.emoji}</Text>
                 <Text style={styles.insightText}>{x.insight.text}</Text>
               </View>
+            )}
+
+            {s.is_current && x?.recapMonth && (
+              <Pressable
+                onPress={() => router.push({ pathname: '/recap/[month]', params: { month: x.recapMonth as string } })}
+                style={styles.insight}>
+                <Text style={styles.emptyEmoji}>🏆</Text>
+                <Text style={styles.insightText}>
+                  สรุปเดือน {THAI_MONTHS_SHORT[Number(x.recapMonth.slice(5)) - 1]} พร้อมแล้ว — ได้เหรียญอะไรนะ?
+                </Text>
+                <Ionicons name="chevron-forward" size={20} color={Colors.text} />
+              </Pressable>
             )}
 
             {s.is_current && x && x.bills.length > 0 && (
