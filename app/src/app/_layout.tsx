@@ -3,6 +3,7 @@ import { router, Stack, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
+import { AppLock } from '@/components/app-lock';
 import { Colors } from '@/constants/theme';
 
 // แจ้งเตือนเด้งตอนเปิดแอปอยู่ก็ยังโชว์ (ค่าเริ่มต้นคือซ่อน)
@@ -53,6 +54,7 @@ export default function RootLayout() {
         <Stack.Screen name="expense/[id]" options={{ title: 'รายละเอียด' }} />
         <Stack.Screen name="expense/edit/[id]" options={{ title: 'แก้ไขรายการ' }} />
       </Stack>
+      <AppLock />
     </>
   );
 }

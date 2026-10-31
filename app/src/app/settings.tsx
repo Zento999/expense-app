@@ -11,6 +11,7 @@ import { exportCsv } from '@/lib/csv';
 import { setSetting } from '@/lib/db';
 import { localError } from '@/lib/errors';
 import { ensurePermission, getReminderSettings, saveReminderSettings, type ReminderSettings } from '@/lib/reminders';
+import { authenticate, canLock, isLockEnabled, setLockEnabled } from '@/lib/lock';
 import { getBudget } from '@/lib/stats';
 
 export default function SettingsScreen() {
@@ -18,12 +19,14 @@ export default function SettingsScreen() {
   const [reminders, setReminders] = useState<ReminderSettings | null>(null);
   const [bills, setBills] = useState<Bill[]>([]);
   const [exporting, setExporting] = useState(false);
+  const [locked, setLocked] = useState(false);
 
   // กลับมาจากหน้าแก้บิลแล้วรายการต้องอัปเดต → โหลดทุกครั้งที่หน้านี้ถูกโฟกัส
   useFocusEffect(
     useCallback(() => {
-      Promise.all([getBudget(), getReminderSettings(), listBills()]).then(
-        ([b, r, list]) => {
+      Promise.all([getBudget(), getReminderSettings(), listBills(), isLockEnabled()]).then(
+        ([b, r, list, lock]) => {
+          setLocked(lock);
           setBudget(b ? String(b) : '');
           setReminders(r);
           setBills(list);
@@ -67,6 +70,22 @@ export default function SettingsScreen() {
     });
   }
 
+  async function toggleLock(on: boolean) {
+    try {
+      if (on && !(await canLock())) {
+        ToastAndroid.show('มือถือยังไม่ได้ตั้งล็อกหน้าจอ — ตั้งลายนิ้วมือหรือ PIN ใน ตั้งค่า Android ก่อน', ToastAndroid.LONG);
+        return;
+      }
+      // ทั้งเปิดและปิดต้องสแกนก่อน — คนที่หยิบมือถือไปตอนแอปเปิดอยู่จะปิดล็อกเองไม่ได้
+      if (!(await authenticate())) return;
+      await setLockEnabled(on);
+      setLocked(on);
+      ToastAndroid.show(on ? 'เปิดล็อกแล้ว — ออกจากแอปเกิน 1 นาทีจะต้องสแกนใหม่' : 'ปิดล็อกแล้ว', ToastAndroid.SHORT);
+    } catch (e) {
+      ToastAndroid.show(localError('ตั้งค่าล็อก', e), ToastAndroid.LONG);
+    }
+  }
+
   async function onExport() {
     setExporting(true);
     try {
@@ -81,6 +100,18 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <Section title="ความปลอดภัย" hint="ใช้ลายนิ้วมือหรือสแกนหน้า ถ้าไม่ผ่านใช้ PIN มือถือแทนได้">
+        <View style={styles.row}>
+          <Text style={styles.label}>🔒 ล็อกแอปด้วยลายนิ้วมือ</Text>
+          <Switch
+            value={locked}
+            onValueChange={toggleLock}
+            trackColor={{ true: Colors.primary, false: Colors.lemon }}
+            thumbColor={Colors.surface}
+          />
+        </View>
+      </Section>
+
       <Section title="งบประมาณรายเดือน" hint="หน้าสรุปจะบอกว่าใช้ไปกี่ % และเหลือใช้ได้วันละเท่าไร · เว้นว่าง = ไม่ใช้งบ">
         <View style={styles.row}>
           <Text style={styles.label}>งบเดือนละ</Text>
