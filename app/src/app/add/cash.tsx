@@ -1,6 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import { randomUUID } from 'expo-crypto';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, ToastAndroid, View } from 'react-native';
@@ -10,9 +9,8 @@ import { CategoryGrid } from '@/components/category-grid';
 import { Numpad } from '@/components/numpad';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { formatTyped, isValidAmount, pressKey, toApiAmount, type NumpadKey } from '@/lib/amount';
-import { createExpense, describeError, getCategories, isNetworkError } from '@/lib/api';
 import { dayLabel, withCurrentTime } from '@/lib/date';
-import { enqueue } from '@/lib/offline-queue';
+import { addExpense, countExpenses, getCategories } from '@/lib/db';
 import { getLastCategoryId, setLastCategoryId } from '@/lib/prefs';
 import type { Category } from '@/lib/types';
 
@@ -33,7 +31,7 @@ export default function CashScreen() {
         setCategoryId(cats.some((c) => c.id === lastId) ? lastId : (cats[0]?.id ?? null));
       },
       (e) => {
-        console.warn('[cash] load categories', e); // ดูสาเหตุได้ในหน้าต่าง Metro
+        console.warn('[cash] load categories from local db', e); // ดูสาเหตุได้ในหน้าต่าง Metro
         setLoadError(true);
       },
     );
@@ -67,30 +65,25 @@ export default function CashScreen() {
     }
     if (categoryId === null) return;
     setSaving(true);
-    const body = {
-      amount: toApiAmount(amount),
-      category_id: categoryId,
-      source: 'cash' as const,
-      spent_at: withCurrentTime(day).toISOString(),
-      payee: payee.trim() || null,
-      client_id: randomUUID(), // ส่งซ้ำจากคิวกี่ครั้งก็ได้รายการเดียว
-    };
-    const label = `฿${formatTyped(body.amount)}`;
+    const value = toApiAmount(amount); // "65.5" → "65.50"
     try {
-      await createExpense(body);
-      ToastAndroid.show(`บันทึก ${label} แล้ว`, ToastAndroid.SHORT);
+      // บันทึกลง SQLite ในเครื่อง — ไม่ต้องรอเน็ต ไม่ต้องเปิดคอม
+      await addExpense({
+        amount: value,
+        categoryId,
+        source: 'cash',
+        spentAt: withCurrentTime(day),
+        payee: payee.trim() || null,
+      });
+      const total = await countExpenses();
+      await setLastCategoryId(categoryId);
+      ToastAndroid.show(`บันทึก ฿${formatTyped(value)} แล้ว (ในเครื่องมี ${total} รายการ)`, ToastAndroid.SHORT);
+      router.back();
     } catch (e) {
-      if (!isNetworkError(e)) {
-        ToastAndroid.show(describeError(e, 'บันทึก'), ToastAndroid.LONG);
-        setSaving(false);
-        return;
-      }
-      // ติดต่อเซิร์ฟเวอร์ไม่ได้ → เก็บไว้ในเครื่องก่อน ไม่ให้ผู้ใช้ต้องจำไปกรอกใหม่
-      await enqueue({ ...body, queued_at: new Date().toISOString() });
-      ToastAndroid.show(`ออฟไลน์อยู่ — เก็บ ${label} ไว้ในเครื่องแล้ว จะส่งให้เองเมื่อเชื่อมต่อได้`, ToastAndroid.LONG);
+      console.warn('[cash] save', e);
+      ToastAndroid.show(`บันทึกไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`, ToastAndroid.LONG);
+      setSaving(false);
     }
-    await setLastCategoryId(categoryId);
-    router.back();
   }
 
   return (
