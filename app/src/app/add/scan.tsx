@@ -1,5 +1,4 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Image } from 'expo-image';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, ToastAndroid, View } from 'react-native';
@@ -8,128 +7,78 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ExpenseForm, type FormValues } from '@/components/expense-form';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { formatTyped } from '@/lib/amount';
-import { ApiError, createExpense, describeError, readUpload, uploadImage } from '@/lib/api';
-import { pickImage, type ImageSource, type PickedImage } from '@/lib/images';
+import { addExpense } from '@/lib/db';
+import { localError } from '@/lib/errors';
+import { pickImage, type ImageSource } from '@/lib/images';
+import { deleteReceiptImage, saveReceiptImage } from '@/lib/local-images';
 import { setLastCategoryId } from '@/lib/prefs';
-import type { ReadResult, ScanKind } from '@/lib/types';
+import type { ScanKind } from '@/lib/types';
 
-type Phase = 'pick' | 'reading' | 'review';
-
-const TEXT: Record<
-  ScanKind,
-  { title: string; payee: string; placeholder: string; docName: string; source: ImageSource }
-> = {
+const TEXT: Record<ScanKind, { title: string; payee: string; placeholder: string; source: ImageSource }> = {
   // สลิปส่วนใหญ่เซฟอยู่ในแกลเลอรีแล้ว / บิลกระดาษต้องถ่ายใหม่
-  slip: { title: 'สลิปโอนเงิน', payee: 'จ่ายให้', placeholder: 'ชื่อผู้รับ / ร้าน', docName: 'สลิป', source: 'library' },
-  receipt: { title: 'บิล / ใบเสร็จ', payee: 'ร้านค้า', placeholder: 'ชื่อร้าน', docName: 'บิล', source: 'camera' },
+  slip: { title: 'สลิปโอนเงิน', payee: 'จ่ายให้', placeholder: 'ชื่อผู้รับ / ร้าน', source: 'library' },
+  receipt: { title: 'บิล / ใบเสร็จ', payee: 'ร้านค้า', placeholder: 'ชื่อร้าน', source: 'camera' },
 };
 
 function toast(message: string) {
   ToastAndroid.show(message, ToastAndroid.LONG);
 }
 
-function readErrorMessage(e: unknown): string {
-  if (e instanceof ApiError) {
-    if (e.status === 503) return 'ยังไม่ได้ตั้งค่า AI บนเซิร์ฟเวอร์ — กรอกเองได้เลย';
-    if (e.status === 422) return 'AI อ่านรูปนี้ไม่ออก — กรอกเองได้เลย';
-    if (e.status === 429) return 'AI ยุ่งอยู่ — กรอกเองได้เลย';
-  }
-  console.warn('[AI read]', e);
-  return 'AI อ่านไม่สำเร็จ — กรอกเองได้เลย';
-}
-
+/** แนบรูปสลิป/บิล แล้วกรอกรายละเอียดเอง — รูปเก็บในเครื่อง (แอปแบบ offline ไม่มี AI อ่านให้) */
 export default function ScanScreen() {
   const params = useLocalSearchParams<{ kind?: string }>();
   const kind: ScanKind = params.kind === 'receipt' ? 'receipt' : 'slip';
   const text = TEXT[kind];
 
-  const [phase, setPhase] = useState<Phase>('pick');
   const [imageUri, setImageUri] = useState<string | null>(null);
-  const [uploadId, setUploadId] = useState<string | null>(null);
-  const [ai, setAi] = useState<ReadResult | null>(null);
   const [saving, setSaving] = useState(false);
-  const skipAi = useRef(false);
+  const imageRef = useRef<string | null>(null); // ไว้ลบไฟล์ตอนออกจากหน้าโดยไม่บันทึก
+  const saved = useRef(false);
 
-  /** อัปโหลด → ให้ AI อ่าน → ไปหน้าตรวจ (setState ทั้งหมดอยู่ใน callback หลังงานเสร็จ) */
-  function processImage(image: PickedImage) {
-    skipAi.current = false;
-    uploadImage(image.bytes).then(
-      async (id) => {
-        setUploadId(id);
-        if (skipAi.current) return; // ผู้ใช้กด "กรอกเองแทน" ไปแล้ว
-        try {
-          const result = await readUpload(id, kind);
-          if (!skipAi.current) setAi(result);
-        } catch (e) {
-          if (!skipAi.current) toast(readErrorMessage(e));
-        }
-        setPhase('review');
-      },
-      (e) => {
-        toast(describeError(e, 'อัปโหลดรูป'));
-        setImageUri(null);
-        setPhase('pick');
-      },
-    );
-  }
-
-  /** เปิดแกลเลอรี/กล้อง → ได้รูปแล้วเริ่มอ่าน (setState อยู่ใน callback หลังเลือกรูปเสร็จ) */
+  /** เลือก/ถ่ายรูป → เขียนลงโฟลเดอร์ของแอปทันที (setState อยู่ใน callback หลังเสร็จ) */
   function start(source: ImageSource, { closeOnCancel = false } = {}) {
-    pickImage(source).then(
-      (image) => {
-        if (!image) {
-          // เปิดอัตโนมัติแล้วกดยกเลิก = ไม่อยากบันทึกแล้ว → ปิดหน้านี้เลย
-          if (closeOnCancel) router.back();
+    pickImage(source)
+      .then(async (picked) => {
+        if (!picked) {
+          if (closeOnCancel) router.back(); // เปิดอัตโนมัติแล้วกดยกเลิก = ไม่อยากบันทึกแล้ว
           return;
         }
-        setImageUri(image.uri);
-        setPhase('reading');
-        processImage(image);
-      },
-      (e) => toast(e instanceof Error ? e.message : 'เปิดรูปไม่ได้'),
-    );
-  }
-
-  function enterManually() {
-    // รูปยังอัปโหลดต่อเบื้องหลัง (ต้องใช้แนบตอนบันทึก) แค่ไม่รอ AI
-    skipAi.current = true;
-    setPhase('review');
+        const uri = await saveReceiptImage(picked.bytes);
+        deleteReceiptImage(imageRef.current); // เลือกรูปใหม่ → ลบรูปเก่าที่ยังไม่ได้ใช้
+        imageRef.current = uri;
+        setImageUri(uri);
+      })
+      .catch((e) => toast(localError('เปิดรูป', e)));
   }
 
   useEffect(() => {
-    // เปิดหน้าเสร็จแล้วค่อยเปิดตัวเลือกรูป (ครั้งเดียว) — ปุ่มในหน้านี้ยังกดเลือกใหม่ได้
     start(text.source, { closeOnCancel: true });
+    // ออกจากหน้านี้โดยไม่ได้บันทึก → ลบรูปที่เขียนไว้ ไม่ให้ค้างกินพื้นที่
+    return () => {
+      if (!saved.current) deleteReceiptImage(imageRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function save(values: FormValues) {
-    if (!uploadId) return;
+    if (!imageUri) return;
     setSaving(true);
     try {
-      await createExpense({
-        amount: values.amount,
-        category_id: values.categoryId,
-        source: kind,
-        spent_at: values.spentAt.toISOString(),
-        payee: values.payee,
-        note: values.note,
-        upload_id: uploadId,
-      });
+      await addExpense({ ...values, source: kind, imageUri });
+      saved.current = true;
       await setLastCategoryId(values.categoryId);
       ToastAndroid.show(`บันทึก ฿${formatTyped(values.amount)} แล้ว`, ToastAndroid.SHORT);
       router.back();
     } catch (e) {
-      toast(describeError(e, 'บันทึก'));
+      toast(localError('บันทึก', e));
       setSaving(false);
     }
   }
 
-  const header = <Stack.Screen options={{ title: phase === 'review' ? 'ตรวจก่อนบันทึก' : text.title }} />;
-
-  if (phase === 'pick') {
+  if (!imageUri) {
     return (
       <View style={styles.center}>
-        {header}
+        <Stack.Screen options={{ title: text.title }} />
         <Ionicons name={kind === 'slip' ? 'receipt-outline' : 'document-text-outline'} size={56} color={Colors.primarySoft} />
         <Text style={styles.pickTitle}>เลือกรูป{text.title}</Text>
         <Pressable onPress={() => start('library')} style={({ pressed }) => [styles.bigButton, pressed && styles.pressed]}>
@@ -146,43 +95,15 @@ export default function ScanScreen() {
     );
   }
 
-  if (phase === 'reading') {
-    return (
-      <View style={styles.flex}>
-        {header}
-        {imageUri && <Image source={{ uri: imageUri }} style={styles.readingImage} contentFit="contain" />}
-        <View style={styles.readingCard}>
-          <View style={styles.sparkleCircle}>
-            <Ionicons name="sparkles" size={24} color={Colors.text} />
-          </View>
-          <Text style={styles.readingTitle}>AI กำลังอ่าน{text.docName}…</Text>
-          <Text style={styles.readingHint}>ประมาณ 3–10 วินาที</Text>
-          <Pressable onPress={enterManually} style={({ pressed }) => [styles.skip, pressed && styles.pressed]}>
-            <Text style={styles.skipText}>กรอกเองแทน</Text>
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.flex} edges={['bottom']}>
-      {header}
+      <Stack.Screen options={{ title: `กรอก${text.title}` }} />
       <ExpenseForm
-        initial={{
-          amount: ai?.amount ? String(ai.amount) : undefined,
-          categoryId: ai?.category_id,
-          payee: ai?.payee,
-          note: ai?.note,
-          spentAt: ai?.spent_at ? new Date(ai.spent_at) : undefined,
-        }}
-        image={imageUri ? { uri: imageUri } : null}
-        ai={ai}
+        initial={{}}
+        image={{ uri: imageUri }}
         payeeLabel={text.payee}
         payeePlaceholder={text.placeholder}
-        warning={ai?.doc_type === 'other' ? `รูปนี้ไม่เหมือน${text.title} — ตรวจข้อมูลให้ดีก่อนบันทึก` : null}
         saving={saving}
-        blockedText={uploadId ? null : 'กำลังอัปโหลดรูป…'}
         onSubmit={save}
       />
     </SafeAreaView>
@@ -212,28 +133,5 @@ const styles = StyleSheet.create({
   },
   bigButtonAlt: { backgroundColor: Colors.butter },
   bigButtonText: { fontSize: FontSize.body, fontWeight: '700', color: Colors.text },
-  readingImage: { flex: 1, margin: Spacing.four, opacity: 0.45 },
-  readingCard: { alignItems: 'center', paddingBottom: Spacing.five, gap: Spacing.one },
-  sparkleCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.butter,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.two,
-  },
-  readingTitle: { fontSize: FontSize.title, fontWeight: '700', color: Colors.text },
-  readingHint: { fontSize: FontSize.caption, color: Colors.textSecondary },
-  skip: {
-    marginTop: Spacing.three,
-    borderWidth: 1,
-    borderColor: Colors.lemon,
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
-  },
-  skipText: { color: Colors.text, fontSize: FontSize.body },
   pressed: { opacity: 0.7 },
 });

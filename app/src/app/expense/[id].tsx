@@ -11,6 +11,7 @@ import { formatBaht } from '@/lib/amount';
 import { dateTimeLabel, THAI_WEEKDAYS_SHORT } from '@/lib/date';
 import { deleteExpense, getExpense } from '@/lib/db';
 import { localError } from '@/lib/errors';
+import { deleteReceiptImage } from '@/lib/local-images';
 import type { Expense, Source } from '@/lib/types';
 
 const SOURCE_TEXT: Record<Source, { type: string; payee: string; icon: keyof typeof Ionicons.glyphMap }> = {
@@ -55,7 +56,9 @@ export default function ExpenseDetailScreen() {
         onPress: async () => {
           setDeleting(true);
           try {
-            await deleteExpense(expenseId);
+            // ลบแถวก่อน แล้วค่อยลบไฟล์รูป — ถ้าลบไฟล์ก่อนแล้วลบแถวพัง รายการจะชี้ไปรูปที่หายไปแล้ว
+            const imageUri = await deleteExpense(expenseId);
+            deleteReceiptImage(imageUri);
             ToastAndroid.show('ลบแล้ว', ToastAndroid.SHORT);
             router.back();
           } catch (e) {

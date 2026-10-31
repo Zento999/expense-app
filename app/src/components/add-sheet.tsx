@@ -14,7 +14,7 @@ type Option = {
 };
 
 const OPTIONS: Option[] = [
-  { key: 'slip', title: 'สลิปโอนเงิน', subtitle: 'AI อ่านยอดให้', icon: 'receipt-outline', color: Colors.butter },
+  { key: 'slip', title: 'สลิปโอนเงิน', subtitle: 'แนบรูปสลิปไว้ดูทีหลัง', icon: 'receipt-outline', color: Colors.butter },
   { key: 'receipt', title: 'บิล / ใบเสร็จ', subtitle: 'ถ่ายรูปบิล', icon: 'document-text-outline', color: Colors.lemon },
   { key: 'cash', title: 'เงินสด', subtitle: 'พิมพ์ยอดเอง', icon: 'cash-outline', color: Colors.honey },
 ];

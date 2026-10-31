@@ -88,14 +88,15 @@ export type NewExpense = {
   spentAt: Date;
   payee?: string | null;
   note?: string | null;
+  imageUri?: string | null; // จาก saveReceiptImage()
 };
 
 /** บันทึกรายจ่าย คืน id ของแถวใหม่ */
 export async function addExpense(e: NewExpense): Promise<number> {
   const db = await getDb();
   const result = await db.runAsync(
-    `INSERT INTO expenses (amount_satang, spent_at, source, category_id, payee, note)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO expenses (amount_satang, spent_at, source, category_id, payee, note, image_uri)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     // ใช้ ? แทนการต่อ string เสมอ — กัน SQL injection และปัญหาเครื่องหมาย ' ในชื่อร้าน
     toSatang(e.amount),
     e.spentAt.toISOString(),
@@ -103,6 +104,7 @@ export async function addExpense(e: NewExpense): Promise<number> {
     e.categoryId,
     e.payee ?? null,
     e.note ?? null,
+    e.imageUri ?? null,
   );
   return result.lastInsertRowId;
 }
@@ -171,10 +173,12 @@ export async function updateExpense(id: number, c: ExpenseChanges): Promise<void
   );
 }
 
-/** ลบรายการ (ขั้นถัดไปที่มีรูปในเครื่อง จะลบไฟล์รูปตามไปด้วย) */
-export async function deleteExpense(id: number): Promise<void> {
+/** ลบรายการ คืน uri ของรูปที่เคยแนบ (ให้คนเรียกลบไฟล์ต่อ — db.ts ไม่ยุ่งกับไฟล์ จะได้ทดสอบแยกได้) */
+export async function deleteExpense(id: number): Promise<string | null> {
   const db = await getDb();
+  const row = await db.getFirstAsync<{ image_uri: string | null }>('SELECT image_uri FROM expenses WHERE id = ?', id);
   await db.runAsync('DELETE FROM expenses WHERE id = ?', id);
+  return row?.image_uri ?? null;
 }
 
 /** ช่วงเดือนตามเวลาในมือถือ → ISO UTC สำหรับเทียบกับ spent_at ('2026-10' → 1 ต.ค. 00:00 ถึง 1 พ.ย. 00:00) */
