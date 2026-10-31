@@ -9,7 +9,7 @@ import { CategoryGrid } from '@/components/category-grid';
 import { ImageViewer } from '@/components/image-viewer';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { formatTyped, isValidAmount, toApiAmount } from '@/lib/amount';
-import { getCategories } from '@/lib/api';
+import { getCategories } from '@/lib/db';
 import { dateTimeLabel } from '@/lib/date';
 import { getLastCategoryId } from '@/lib/prefs';
 import type { Category, ReadResult } from '@/lib/types';

@@ -134,7 +134,47 @@ function toExpense(r: ExpenseRow): Expense {
     note: r.note,
     created_at: r.created_at,
     has_image: r.image_uri !== null,
+    image_uri: r.image_uri,
   };
+}
+
+const SELECT_EXPENSE = `
+  SELECT e.id, e.amount_satang, e.spent_at, e.source, e.payee, e.note, e.image_uri, e.created_at,
+         c.id AS c_id, c.name AS c_name, c.icon AS c_icon, c.color AS c_color
+  FROM expenses e JOIN categories c ON c.id = e.category_id`;
+
+export async function getExpense(id: number): Promise<Expense | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<ExpenseRow>(`${SELECT_EXPENSE} WHERE e.id = ?`, id);
+  return row ? toExpense(row) : null;
+}
+
+export type ExpenseChanges = {
+  amount: string; // "65.50"
+  categoryId: number;
+  spentAt: Date;
+  payee: string | null;
+  note: string | null;
+};
+
+/** แก้ทุกช่องที่ฟอร์มแก้ได้ในครั้งเดียว (ที่มา/รูป ไม่เปลี่ยน) */
+export async function updateExpense(id: number, c: ExpenseChanges): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `UPDATE expenses SET amount_satang = ?, category_id = ?, spent_at = ?, payee = ?, note = ? WHERE id = ?`,
+    toSatang(c.amount),
+    c.categoryId,
+    c.spentAt.toISOString(),
+    c.payee,
+    c.note,
+    id,
+  );
+}
+
+/** ลบรายการ (ขั้นถัดไปที่มีรูปในเครื่อง จะลบไฟล์รูปตามไปด้วย) */
+export async function deleteExpense(id: number): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM expenses WHERE id = ?', id);
 }
 
 /** ช่วงเดือนตามเวลาในมือถือ → ISO UTC สำหรับเทียบกับ spent_at ('2026-10' → 1 ต.ค. 00:00 ถึง 1 พ.ย. 00:00) */
@@ -163,12 +203,7 @@ export async function listExpenses({ month, q, categoryId, limit = 50, offset = 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   const rows = await db.getAllAsync<ExpenseRow>(
-    `SELECT e.id, e.amount_satang, e.spent_at, e.source, e.payee, e.note, e.image_uri, e.created_at,
-            c.id AS c_id, c.name AS c_name, c.icon AS c_icon, c.color AS c_color
-     FROM expenses e JOIN categories c ON c.id = e.category_id
-     ${whereSql}
-     ORDER BY e.spent_at DESC, e.id DESC
-     LIMIT ? OFFSET ?`,
+    `${SELECT_EXPENSE} ${whereSql} ORDER BY e.spent_at DESC, e.id DESC LIMIT ? OFFSET ?`,
     [...params, limit, offset],
   );
   // รวมเป็นสตางค์ (จำนวนเต็ม) ก่อน แล้วค่อยหาร 100 ครั้งเดียว — ยอดรวมไม่เพี้ยน

@@ -19,6 +19,7 @@ export type Expense = {
   note: string | null;
   created_at: string;
   has_image: boolean;
+  image_uri?: string | null; // รูปในเครื่อง (แอปแบบ offline)
 };
 
 export type ExpenseCreate = {

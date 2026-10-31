@@ -6,7 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ExpenseForm, type FormValues } from '@/components/expense-form';
 import { Colors, Spacing } from '@/constants/theme';
-import { describeError, expenseImageSource, getExpense, updateExpense } from '@/lib/api';
+import { getExpense, updateExpense } from '@/lib/db';
+import { localError } from '@/lib/errors';
 import type { Expense, Source } from '@/lib/types';
 
 const PAYEE: Record<Source, { label: string; placeholder: string }> = {
@@ -26,27 +27,26 @@ export default function EditExpenseScreen() {
   useEffect(() => {
     getExpense(expenseId).then(
       (e) => {
+        if (!e) {
+          setError('ไม่พบรายการนี้ — อาจถูกลบไปแล้ว');
+          return;
+        }
         setExpense(e);
-        if (e.has_image) expenseImageSource(e.id).then(setImage);
+        setImage(e.image_uri ? { uri: e.image_uri } : null);
       },
-      (e) => setError(describeError(e, 'โหลดรายการ')),
+      (e) => setError(localError('โหลดรายการ', e)),
     );
   }, [expenseId]);
 
   async function save(values: FormValues) {
     setSaving(true);
     try {
-      await updateExpense(expenseId, {
-        amount: values.amount,
-        category_id: values.categoryId,
-        spent_at: values.spentAt.toISOString(),
-        payee: values.payee,
-        note: values.note,
-      });
+      // FormValues ตรงกับ ExpenseChanges อยู่แล้ว (amount เป็น "65.50", spentAt เป็น Date)
+      await updateExpense(expenseId, values);
       ToastAndroid.show('บันทึกการแก้ไขแล้ว', ToastAndroid.SHORT);
       router.back();
     } catch (e) {
-      ToastAndroid.show(describeError(e, 'บันทึก'), ToastAndroid.LONG);
+      ToastAndroid.show(localError('บันทึก', e), ToastAndroid.LONG);
       setSaving(false);
     }
   }

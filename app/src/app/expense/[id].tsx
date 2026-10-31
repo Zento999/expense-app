@@ -8,8 +8,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ImageViewer } from '@/components/image-viewer';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { formatBaht } from '@/lib/amount';
-import { deleteExpense, describeError, expenseImageSource, getExpense } from '@/lib/api';
 import { dateTimeLabel, THAI_WEEKDAYS_SHORT } from '@/lib/date';
+import { deleteExpense, getExpense } from '@/lib/db';
+import { localError } from '@/lib/errors';
 import type { Expense, Source } from '@/lib/types';
 
 const SOURCE_TEXT: Record<Source, { type: string; payee: string; icon: keyof typeof Ionicons.glyphMap }> = {
@@ -32,10 +33,15 @@ export default function ExpenseDetailScreen() {
     useCallback(() => {
       getExpense(expenseId).then(
         (e) => {
+          if (!e) {
+            setError('ไม่พบรายการนี้ — อาจถูกลบไปแล้ว');
+            return;
+          }
           setExpense(e);
-          if (e.has_image) expenseImageSource(e.id).then(setImage);
+          // รูปอยู่ในเครื่องแล้ว ใช้ path ตรงๆ ได้เลย ไม่ต้องแนบ token แบบตอนดึงจากเซิร์ฟเวอร์
+          setImage(e.image_uri ? { uri: e.image_uri } : null);
         },
-        (e) => setError(describeError(e, 'โหลดรายการ')),
+        (e) => setError(localError('โหลดรายการ', e)),
       );
     }, [expenseId]),
   );
@@ -53,7 +59,7 @@ export default function ExpenseDetailScreen() {
             ToastAndroid.show('ลบแล้ว', ToastAndroid.SHORT);
             router.back();
           } catch (e) {
-            ToastAndroid.show(describeError(e, 'ลบ'), ToastAndroid.LONG);
+            ToastAndroid.show(localError('ลบ', e), ToastAndroid.LONG);
             setDeleting(false);
           }
         },
