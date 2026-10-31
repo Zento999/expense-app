@@ -1,22 +1,38 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, ToastAndroid, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BudgetMeter } from '@/components/budget-meter';
+import { CalendarHeat } from '@/components/calendar-heat';
 import { CategoryBars } from '@/components/category-bars';
 import { ExpenseRow } from '@/components/expense-row';
 import { MonthBars } from '@/components/month-bars';
 import { MonthTotalCard } from '@/components/month-total-card';
+import { UpcomingBills } from '@/components/upcoming-bills';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { formatBaht } from '@/lib/amount';
+import { getUpcomingBills, payBill, type DueBill } from '@/lib/bills';
 import { addMonths, greeting, monthKey, shortDate, THAI_MONTHS_SHORT } from '@/lib/date';
 import { getSummary, listExpenses } from '@/lib/db';
 import { localError } from '@/lib/errors';
+import { refreshRemindersQuietly } from '@/lib/reminders';
+import { budgetStatus, getBudget, getDailyTotals, getInsight, getStreak, type Insight } from '@/lib/stats';
 import type { Expense, Summary } from '@/lib/types';
 
 const RECENT_COUNT = 3;
 const MIN_MONTHS_FOR_CHART = 2; // ข้อมูลน้อยกว่านี้ กราฟจะมีแต่แท่งว่าง — แสดงการ์ดให้กำลังใจแทน
+
+// ของเสริมรอบการ์ดยอดเดือน — โหลดพร้อมสรุป แต่ถ้าพังก็ไม่ทำให้หน้าสรุปพังตาม
+type Extras = {
+  month: string;
+  budget: number | null;
+  streak: number;
+  insight: Insight | null;
+  daily: Map<number, number>;
+  bills: DueBill[];
+};
 
 type Compare = { text: string; icon: keyof typeof Ionicons.glyphMap; color: string };
 
@@ -48,6 +64,8 @@ export default function SummaryScreen() {
   const [month, setMonth] = useState(thisMonth);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [recent, setRecent] = useState<Expense[]>([]);
+  const [extras, setExtras] = useState<Extras | null>(null);
+  const [payingId, setPayingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const requestSeq = useRef(0); // เปลี่ยนเดือนเร็วๆ → ทิ้งคำตอบของเดือนเก่าที่มาช้า
@@ -68,6 +86,14 @@ export default function SummaryScreen() {
       .finally(() => {
         if (seq === requestSeq.current) setRefreshing(false);
       });
+    const today = new Date();
+    Promise.all([getBudget(), getStreak(today), getInsight(today), getDailyTotals(key), getUpcomingBills(today)]).then(
+      ([budget, streak, insight, daily, bills]) => {
+        if (seq === requestSeq.current) setExtras({ month: key, budget, streak: streak.days, insight, daily, bills });
+      },
+      (e) => console.warn('[summary] extras', e),
+    );
+    refreshRemindersQuietly(); // บันทึกแล้วกลับมาหน้านี้ → คืนนี้ไม่ต้องเตือน
   }, [month]);
 
   // โหลดใหม่ทุกครั้งที่กลับมาหน้านี้ (เช่นหลังบันทึกรายการ) และเมื่อเปลี่ยนเดือน
@@ -77,14 +103,29 @@ export default function SummaryScreen() {
     }, [load]),
   );
 
-  function openHistory(params: { category?: string } = {}) {
-    router.navigate({ pathname: '/history', params: { month: monthKey(month), ...params } });
+  async function onPayBill(bill: DueBill) {
+    setPayingId(bill.id);
+    try {
+      await payBill(bill);
+      ToastAndroid.show(`บันทึก ${bill.name} ${formatBaht(bill.amount)} แล้ว`, ToastAndroid.SHORT);
+      load();
+    } catch (e) {
+      ToastAndroid.show(localError('บันทึกบิล', e), ToastAndroid.LONG);
+    } finally {
+      setPayingId(null);
+    }
+  }
+
+  function openHistory(params: { category?: string; day?: string } = {}) {
+    router.navigate({ pathname: '/history', params: { month: monthKey(month), category: '', day: '', ...params } });
   }
 
   // แสดงข้อมูลเฉพาะเมื่อคำตอบตรงกับเดือนที่เลือก (กันตัวเลขเดือนเก่าค้างตอนกำลังโหลด)
   const s = summary?.month === monthKey(month) ? summary : null;
   const compare = s ? compareWithPrev(s, month) : null;
   const monthsWithData = s ? s.months.filter((m) => m.total > 0).length : 0;
+  const x = extras?.month === monthKey(month) ? extras : null;
+  const budget = s?.is_current && x?.budget ? budgetStatus(x.budget, s.total, now) : null;
 
   return (
     <SafeAreaView style={styles.flex} edges={['top']}>
@@ -108,8 +149,13 @@ export default function SummaryScreen() {
               {summary && ` · วันนี้ใช้ไป ${formatBaht(summary.today_total)}`}
             </Text>
           </View>
-          <Pressable onPress={() => router.push('/backup')} hitSlop={12} accessibilityLabel="สำรองข้อมูล">
-            <Ionicons name="archive-outline" size={24} color={Colors.text} />
+          {x && x.streak > 0 && (
+            <View style={styles.streak} accessibilityLabel={`บันทึกต่อเนื่อง ${x.streak} วัน`}>
+              <Text style={styles.streakText}>🔥 {x.streak} วัน</Text>
+            </View>
+          )}
+          <Pressable onPress={() => router.push('/settings')} hitSlop={12} accessibilityLabel="ตั้งค่า">
+            <Ionicons name="settings-outline" size={24} color={Colors.text} />
           </Pressable>
         </View>
 
@@ -131,6 +177,12 @@ export default function SummaryScreen() {
               <Text style={styles.pillText}>{compare.text}</Text>
             </View>
           )}
+          {budget && <BudgetMeter status={budget} />}
+          {s?.is_current && x && !x.budget && (
+            <Pressable onPress={() => router.push('/settings')} style={styles.setBudget}>
+              <Text style={styles.setBudgetText}>🎯 ตั้งงบรายเดือน ›</Text>
+            </Pressable>
+          )}
         </MonthTotalCard>
 
         {error && <Text style={styles.error}>{error}</Text>}
@@ -139,6 +191,37 @@ export default function SummaryScreen() {
           !error && <ActivityIndicator color={Colors.primary} style={styles.loading} />
         ) : (
           <>
+            {s.is_current && x?.insight && (
+              <View style={[styles.insight, x.insight.tone === 'good' && styles.insightGood]}>
+                <Text style={styles.emptyEmoji}>{x.insight.emoji}</Text>
+                <Text style={styles.insightText}>{x.insight.text}</Text>
+              </View>
+            )}
+
+            {s.is_current && x && x.bills.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>บิลที่จะถึง</Text>
+                  <Pressable onPress={() => router.push('/settings')} hitSlop={8}>
+                    <Text style={styles.link}>จัดการ ›</Text>
+                  </Pressable>
+                </View>
+                <UpcomingBills bills={x.bills} onPay={onPayBill} busyId={payingId} />
+              </View>
+            )}
+
+            {x && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>ปฏิทิน</Text>
+                <CalendarHeat
+                  month={month}
+                  totals={x.daily}
+                  onPressDay={(d) => openHistory({ day: `${monthKey(month)}-${String(d).padStart(2, '0')}` })}
+                />
+                <Text style={styles.empty}>สีเข้ม = วันที่ใช้เยอะ · แตะวันเพื่อดูรายการ</Text>
+              </View>
+            )}
+
             {recent.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
@@ -216,6 +299,20 @@ const styles = StyleSheet.create({
     marginTop: Spacing.two,
   },
   pillText: { fontSize: FontSize.caption, color: Colors.text },
+  streak: { backgroundColor: Colors.butter, borderRadius: Radius.full, paddingHorizontal: Spacing.two, paddingVertical: Spacing.one },
+  streakText: { fontSize: FontSize.caption, fontWeight: '700', color: Colors.text },
+  setBudget: { alignSelf: 'center', marginTop: Spacing.two, padding: Spacing.one },
+  setBudgetText: { fontSize: FontSize.caption, color: Colors.text, fontWeight: '600' },
+  insight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    backgroundColor: Colors.butter,
+    borderRadius: Radius.md,
+    padding: Spacing.three,
+  },
+  insightGood: { backgroundColor: '#E6F4E2' },
+  insightText: { flex: 1, fontSize: FontSize.body, color: Colors.text },
   error: { backgroundColor: Colors.butter, borderRadius: Radius.sm, padding: Spacing.two, color: Colors.text },
   loading: { marginTop: Spacing.five },
   section: { backgroundColor: Colors.surface, borderRadius: Radius.md, padding: Spacing.three, gap: Spacing.two },

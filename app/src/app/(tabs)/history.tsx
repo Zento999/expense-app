@@ -19,7 +19,7 @@ import { MonthTotalCard } from '@/components/month-total-card';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { formatBaht } from '@/lib/amount';
 import { getCategories, listExpenses } from '@/lib/db'; // อ่านจากฐานข้อมูลในเครื่อง (ไม่ใช้เซิร์ฟเวอร์แล้ว)
-import { addMonths, dayHeader, dayKey, monthKey } from '@/lib/date';
+import { addMonths, dayHeader, dayKey, monthKey, THAI_MONTHS_SHORT } from '@/lib/date';
 import type { Category, Expense } from '@/lib/types';
 
 const PAGE_SIZE = 50;
@@ -45,13 +45,19 @@ function groupByDay(items: Expense[]): Section[] {
 }
 
 export default function HistoryScreen() {
-  // เดือนและหมวดเก็บใน URL (?month=2026-10&category=1) — หน้าสรุปจึงส่งตัวกรองมาให้ได้ตรงๆ
-  const params = useLocalSearchParams<{ month?: string; category?: string }>();
+  // เดือน/วัน/หมวดเก็บใน URL (?month=2026-10&day=2026-10-14&category=1) — หน้าสรุปจึงส่งตัวกรองมาให้ได้ตรงๆ
+  const params = useLocalSearchParams<{ month?: string; day?: string; category?: string }>();
   const thisMonthKey = monthKey(new Date());
-  const monthStr = params.month && /^\d{4}-\d{2}$/.test(params.month) ? params.month : thisMonthKey;
+  const dayStr = params.day && /^\d{4}-\d{2}-\d{2}$/.test(params.day) ? params.day : null;
+  const monthStr = dayStr
+    ? dayStr.slice(0, 7)
+    : params.month && /^\d{4}-\d{2}$/.test(params.month)
+      ? params.month
+      : thisMonthKey;
   const month = new Date(Number(monthStr.slice(0, 4)), Number(monthStr.slice(5)) - 1, 1);
   const categoryId = params.category ? Number(params.category) : null;
-  const setMonth = (d: Date) => router.setParams({ month: monthKey(d) });
+  const setMonth = (d: Date) => router.setParams({ month: monthKey(d), day: '' }); // เปลี่ยนเดือน = เลิกกรองวัน
+  const clearDay = () => router.setParams({ day: '' });
   const setCategoryId = (id: number | null) => router.setParams({ category: id === null ? '' : String(id) });
 
   const [search, setSearch] = useState(''); // สิ่งที่พิมพ์อยู่
@@ -70,7 +76,7 @@ export default function HistoryScreen() {
   const requestSeq = useRef(0);
   const loadingMore = useRef(false);
 
-  const filtered = query !== '' || categoryId !== null;
+  const filtered = query !== '' || categoryId !== null || dayStr !== null;
   const canGoNext = monthStr < thisMonthKey;
 
   // หน่วงการค้นหา: รอให้หยุดพิมพ์ 0.3 วิ ก่อนยิง API (ไม่ยิงทุกตัวอักษร)
@@ -86,7 +92,7 @@ export default function HistoryScreen() {
   const fetchPage = useCallback(
     (offset: number) => {
       const seq = ++requestSeq.current;
-      const filters = { month: monthStr, q: query || undefined, categoryId: categoryId ?? undefined };
+      const filters = { month: monthStr, day: dayStr ?? undefined, q: query || undefined, categoryId: categoryId ?? undefined };
       Promise.all([
         listExpenses({ ...filters, limit: PAGE_SIZE, offset }),
         // กรองอยู่ → ขอยอดทั้งเดือนแยกอีกครั้ง (limit=1 เพราะต้องการแค่ total ที่ DB รวมให้)
@@ -112,7 +118,7 @@ export default function HistoryScreen() {
         });
     },
     // ใช้ monthStr (string) ไม่ใช่ month (Date) — Date ถูกสร้างใหม่ทุก render จะทำให้โหลดวนไม่หยุด
-    [monthStr, query, categoryId, filtered],
+    [monthStr, dayStr, query, categoryId, filtered],
   );
 
   // โหลดใหม่ทุกครั้งที่กลับมาหน้านี้ (เช่นหลังบันทึก/แก้/ลบ) และเมื่อเปลี่ยนเดือน/ตัวกรอง
@@ -134,7 +140,8 @@ export default function HistoryScreen() {
   }
 
   const category = categories.find((c) => c.id === categoryId);
-  const filterLabel = [category && `เฉพาะ ${category.name}`, query && `ค้น "${query}"`].filter(Boolean).join(' · ');
+  const dayLabel = dayStr && `วันที่ ${Number(dayStr.slice(8))} ${THAI_MONTHS_SHORT[Number(dayStr.slice(5, 7)) - 1]}`;
+  const filterLabel = [dayLabel, category && `เฉพาะ ${category.name}`, query && `ค้น "${query}"`].filter(Boolean).join(' · ');
   const share = monthTotal > 0 ? Math.round((totalAmount / monthTotal) * 100) : 0;
 
   const header = (
@@ -175,6 +182,7 @@ export default function HistoryScreen() {
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+        {dayLabel && <Chip label={`📅 ${dayLabel}  ✕`} selected onPress={clearDay} />}
         <Chip label="ทั้งหมด" selected={categoryId === null} onPress={() => setCategoryId(null)} />
         {categories.map((c) => (
           <Chip
