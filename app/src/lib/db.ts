@@ -430,3 +430,83 @@ export async function setSetting(key: string, value: string | null): Promise<voi
   if (value === null) await db.runAsync('DELETE FROM settings WHERE key = ?', key);
   else await db.runAsync('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', key, value);
 }
+
+// ---------- จัดการหมวดหมู่ ----------
+
+export type CategoryInput = { name: string; icon: string; color: string };
+
+const OTHER_CATEGORY_ID = 10; // "อื่นๆ" — หมวดใหม่จะแทรกก่อนหมวดนี้ ให้ "อื่นๆ" อยู่ท้ายเสมอ
+
+/** เขียน sort_order ใหม่เป็น 1..n ตามลำดับที่ส่งมา */
+async function writeOrder(db: SQLite.SQLiteDatabase, ids: number[]) {
+  for (const [i, id] of ids.entries()) await db.runAsync('UPDATE categories SET sort_order = ? WHERE id = ?', i + 1, id);
+}
+
+/** แปลง error ชื่อซ้ำของ SQLite เป็นภาษาคน */
+function friendlyCategoryError(e: unknown, name: string): never {
+  if (e instanceof Error && /UNIQUE/i.test(e.message)) throw new Error(`มีหมวดชื่อ "${name}" อยู่แล้ว`);
+  throw e;
+}
+
+export async function addCategory(c: CategoryInput): Promise<number> {
+  const db = await getDb();
+  let id = 0;
+  try {
+    await db.withTransactionAsync(async () => {
+      const ids = (await getCategories()).map((x) => x.id);
+      const r = await db.runAsync('INSERT INTO categories (name, icon, color, sort_order) VALUES (?, ?, ?, 0)', c.name, c.icon, c.color);
+      id = r.lastInsertRowId;
+      const at = ids[ids.length - 1] === OTHER_CATEGORY_ID ? ids.length - 1 : ids.length;
+      ids.splice(at, 0, id);
+      await writeOrder(db, ids);
+    });
+  } catch (e) {
+    friendlyCategoryError(e, c.name);
+  }
+  return id;
+}
+
+export async function updateCategory(id: number, c: CategoryInput): Promise<void> {
+  const db = await getDb();
+  try {
+    await db.runAsync('UPDATE categories SET name = ?, icon = ?, color = ? WHERE id = ?', c.name, c.icon, c.color, id);
+  } catch (e) {
+    friendlyCategoryError(e, c.name);
+  }
+}
+
+/** เลื่อนขึ้น (-1) / ลง (+1) หนึ่งตำแหน่ง */
+export async function moveCategory(id: number, direction: -1 | 1): Promise<void> {
+  const db = await getDb();
+  const ids = (await getCategories()).map((c) => c.id);
+  const i = ids.indexOf(id);
+  const j = i + direction;
+  if (i < 0 || j < 0 || j >= ids.length) return;
+  [ids[i], ids[j]] = [ids[j], ids[i]];
+  await db.withTransactionAsync(() => writeOrder(db, ids));
+}
+
+/** มีรายจ่าย/บิลใช้หมวดนี้อยู่กี่อัน — ลบได้ทันทีถ้าเป็น 0 */
+export async function categoryUsage(id: number): Promise<{ expenses: number; bills: number }> {
+  const db = await getDb();
+  const e = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM expenses WHERE category_id = ?', id);
+  const b = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM bills WHERE category_id = ?', id);
+  return { expenses: e?.n ?? 0, bills: b?.n ?? 0 };
+}
+
+/** ลบหมวด — ถ้ามีรายการใช้อยู่ ต้องบอกว่าจะย้ายไปหมวดไหน (ย้ายแล้วลบใน transaction เดียว) */
+export async function deleteCategory(id: number, moveToId: number | null): Promise<void> {
+  const db = await getDb();
+  const usage = await categoryUsage(id);
+  if (usage.expenses + usage.bills > 0 && (moveToId === null || moveToId === id)) {
+    throw new Error('ต้องเลือกหมวดที่จะย้ายรายการไปก่อน');
+  }
+  if ((await getCategories()).length <= 1) throw new Error('ต้องมีอย่างน้อย 1 หมวด');
+  await db.withTransactionAsync(async () => {
+    if (moveToId !== null) {
+      await db.runAsync('UPDATE expenses SET category_id = ? WHERE category_id = ?', moveToId, id);
+      await db.runAsync('UPDATE bills SET category_id = ? WHERE category_id = ?', moveToId, id);
+    }
+    await db.runAsync('DELETE FROM categories WHERE id = ?', id);
+  });
+}

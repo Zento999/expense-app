@@ -149,6 +149,13 @@ export default function SettingsScreen() {
       </Section>
 
       <Section title="ข้อมูล">
+        <Pressable style={styles.row} onPress={() => router.push('/categories')}>
+          <View style={styles.inline}>
+            <Ionicons name="pricetags-outline" size={18} color={Colors.text} />
+            <Text style={styles.label}>หมวดหมู่ (เพิ่ม / แก้ / เรียง)</Text>
+          </View>
+          <Text style={styles.value}>›</Text>
+        </Pressable>
         <Pressable style={styles.row} onPress={() => router.push('/backup')}>
           <View style={styles.inline}>
             <Ionicons name="archive-outline" size={18} color={Colors.text} />

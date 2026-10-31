@@ -45,6 +45,8 @@ export default function RootLayout() {
         <Stack.Screen name="settings" options={{ title: 'ตั้งค่า' }} />
         <Stack.Screen name="backup" options={{ title: 'สำรองข้อมูล' }} />
         <Stack.Screen name="bill/[id]" options={{ title: 'บิล' }} />
+        <Stack.Screen name="categories" options={{ title: 'หมวดหมู่' }} />
+        <Stack.Screen name="category/[id]" options={{ title: 'หมวด' }} />
         <Stack.Screen name="add/cash" options={{ title: 'เงินสด', presentation: 'modal' }} />
         <Stack.Screen name="add/scan" options={{ presentation: 'modal' }} />
         <Stack.Screen name="expense/[id]" options={{ title: 'รายละเอียด' }} />
