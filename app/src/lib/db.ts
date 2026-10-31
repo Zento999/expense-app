@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 
-import type { Category, Source } from '@/lib/types';
+import type { Category, Expense, ExpenseList, ExpenseQuery, Source } from '@/lib/types';
 
 /**
  * ฐานข้อมูลในมือถือ (SQLite) — แอปทำงานได้เองโดยไม่ต้องมีเซิร์ฟเวอร์
@@ -105,6 +105,78 @@ export async function addExpense(e: NewExpense): Promise<number> {
     e.note ?? null,
   );
   return result.lastInsertRowId;
+}
+
+type ExpenseRow = {
+  id: number;
+  amount_satang: number;
+  spent_at: string;
+  source: Source;
+  payee: string | null;
+  note: string | null;
+  image_uri: string | null;
+  created_at: string;
+  c_id: number;
+  c_name: string;
+  c_icon: string;
+  c_color: string;
+};
+
+/** แถวจาก SQL → รูปแบบ Expense เดิมที่หน้าจอใช้อยู่แล้ว (หน้าจอไม่ต้องแก้มาก) */
+function toExpense(r: ExpenseRow): Expense {
+  return {
+    id: r.id,
+    amount: r.amount_satang / 100,
+    spent_at: r.spent_at,
+    source: r.source,
+    category: { id: r.c_id, name: r.c_name, icon: r.c_icon, color: r.c_color },
+    payee: r.payee,
+    note: r.note,
+    created_at: r.created_at,
+    has_image: r.image_uri !== null,
+  };
+}
+
+/** ช่วงเดือนตามเวลาในมือถือ → ISO UTC สำหรับเทียบกับ spent_at ('2026-10' → 1 ต.ค. 00:00 ถึง 1 พ.ย. 00:00) */
+function monthRange(month: string): [string, string] {
+  const [y, m] = month.split('-').map(Number);
+  return [new Date(y, m - 1, 1).toISOString(), new Date(y, m, 1).toISOString()];
+}
+
+/** รายการตามเดือน/คำค้น/หมวด พร้อมจำนวนและยอดรวมของทั้งหมดที่ตรงเงื่อนไข (ไม่ใช่แค่หน้านี้) */
+export async function listExpenses({ month, q, categoryId, limit = 50, offset = 0 }: ExpenseQuery): Promise<ExpenseList> {
+  const db = await getDb();
+  const where: string[] = [];
+  const params: (string | number)[] = [];
+  if (month) {
+    where.push('e.spent_at >= ? AND e.spent_at < ?');
+    params.push(...monthRange(month));
+  }
+  if (q) {
+    where.push('(e.payee LIKE ? OR e.note LIKE ?)');
+    params.push(`%${q}%`, `%${q}%`);
+  }
+  if (categoryId != null) {
+    where.push('e.category_id = ?');
+    params.push(categoryId);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const rows = await db.getAllAsync<ExpenseRow>(
+    `SELECT e.id, e.amount_satang, e.spent_at, e.source, e.payee, e.note, e.image_uri, e.created_at,
+            c.id AS c_id, c.name AS c_name, c.icon AS c_icon, c.color AS c_color
+     FROM expenses e JOIN categories c ON c.id = e.category_id
+     ${whereSql}
+     ORDER BY e.spent_at DESC, e.id DESC
+     LIMIT ? OFFSET ?`,
+    [...params, limit, offset],
+  );
+  // รวมเป็นสตางค์ (จำนวนเต็ม) ก่อน แล้วค่อยหาร 100 ครั้งเดียว — ยอดรวมไม่เพี้ยน
+  const totals = await db.getFirstAsync<{ n: number; total: number }>(
+    `SELECT COUNT(*) AS n, COALESCE(SUM(e.amount_satang), 0) AS total FROM expenses e ${whereSql}`,
+    params,
+  );
+  return { items: rows.map(toExpense), total_count: totals?.n ?? 0, total_amount: (totals?.total ?? 0) / 100 };
 }
 
 export async function countExpenses(): Promise<number> {

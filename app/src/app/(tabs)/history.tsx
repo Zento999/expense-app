@@ -16,10 +16,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ExpenseRow } from '@/components/expense-row';
 import { MonthTotalCard } from '@/components/month-total-card';
-import { PendingBanner } from '@/components/pending-banner';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { formatBaht } from '@/lib/amount';
-import { describeError, getCategories, listExpenses } from '@/lib/api';
+import { getCategories, listExpenses } from '@/lib/db'; // อ่านจากฐานข้อมูลในเครื่อง (ไม่ใช้เซิร์ฟเวอร์แล้ว)
 import { addMonths, dayHeader, dayKey, monthKey } from '@/lib/date';
 import type { Category, Expense } from '@/lib/types';
 
@@ -102,7 +101,8 @@ export default function HistoryScreen() {
           setError(null);
         })
         .catch((e) => {
-          if (seq === requestSeq.current) setError(describeError(e, 'โหลดรายการ'));
+          console.warn('[history] local db', e);
+          if (seq === requestSeq.current) setError(`โหลดรายการไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`);
         })
         .finally(() => {
           if (seq !== requestSeq.current) return;
@@ -139,7 +139,6 @@ export default function HistoryScreen() {
 
   const header = (
     <View style={styles.header}>
-      <PendingBanner onSynced={() => fetchPage(0)} />
       <MonthTotalCard
         month={month}
         canGoNext={canGoNext}
