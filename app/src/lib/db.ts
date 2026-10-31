@@ -43,6 +43,21 @@ const MIGRATIONS = [
     (9, 'การศึกษา', '📚', '#9FD8D3', 9),
     (10, 'อื่นๆ', '📦', '#C9C2B0', 99);
   `,
+  // 2: ค่าตั้งค่า (งบ, เวลาเตือน) + บิลประจำเดือน — เก็บใน db จะได้ติดไปกับไฟล์สำรองด้วย
+  `
+  CREATE TABLE settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+  CREATE TABLE bills (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    amount_satang INTEGER NOT NULL CHECK (amount_satang > 0),
+    day_of_month INTEGER NOT NULL CHECK (day_of_month BETWEEN 1 AND 31),
+    category_id INTEGER NOT NULL REFERENCES categories(id),
+    paid_through TEXT                      -- 'YYYY-MM' เดือนล่าสุดที่จ่ายแล้ว
+  );
+  `,
 ];
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
@@ -187,12 +202,21 @@ function monthRange(month: string): [string, string] {
   return [new Date(y, m - 1, 1).toISOString(), new Date(y, m, 1).toISOString()];
 }
 
-/** รายการตามเดือน/คำค้น/หมวด พร้อมจำนวนและยอดรวมของทั้งหมดที่ตรงเงื่อนไข (ไม่ใช่แค่หน้านี้) */
-export async function listExpenses({ month, q, categoryId, limit = 50, offset = 0 }: ExpenseQuery): Promise<ExpenseList> {
+/** '2026-10-27' → 27 ต.ค. 00:00 ถึง 28 ต.ค. 00:00 (เวลาในมือถือ) เป็น ISO UTC */
+function dayRange(day: string): [string, string] {
+  const [y, m, d] = day.split('-').map(Number);
+  return [new Date(y, m - 1, d).toISOString(), new Date(y, m - 1, d + 1).toISOString()];
+}
+
+/** รายการตามเดือน/วัน/คำค้น/หมวด พร้อมจำนวนและยอดรวมของทั้งหมดที่ตรงเงื่อนไข (ไม่ใช่แค่หน้านี้) */
+export async function listExpenses({ month, day, q, categoryId, limit = 50, offset = 0 }: ExpenseQuery): Promise<ExpenseList> {
   const db = await getDb();
   const where: string[] = [];
   const params: (string | number)[] = [];
-  if (month) {
+  if (day) {
+    where.push('e.spent_at >= ? AND e.spent_at < ?');
+    params.push(...dayRange(day));
+  } else if (month) {
     where.push('e.spent_at >= ? AND e.spent_at < ?');
     params.push(...monthRange(month));
   }
@@ -306,6 +330,14 @@ type ExpenseFull = {
   image_uri: string | null;
   created_at: string;
 };
+type BillFull = {
+  id: number;
+  name: string;
+  amount_satang: number;
+  day_of_month: number;
+  category_id: number;
+  paid_through: string | null;
+};
 
 /**
  * กู้คืน: แทนที่ข้อมูลทั้งหมดด้วยข้อมูลจากไฟล์สำรอง
@@ -324,11 +356,15 @@ export async function replaceAllData(backupBytes: Uint8Array, mapImageUri: (oldU
     const expenses = await backup.getAllAsync<ExpenseFull>(
       'SELECT id, amount_satang, spent_at, source, category_id, payee, note, image_uri, created_at FROM expenses',
     );
+    const settings = await backup.getAllAsync<{ key: string; value: string }>('SELECT key, value FROM settings');
+    const bills = await backup.getAllAsync<BillFull>(
+      'SELECT id, name, amount_satang, day_of_month, category_id, paid_through FROM bills',
+    );
 
     const db = await getDb();
     // ทั้งหมดใน transaction เดียว: พังกลางทาง = ข้อมูลเดิมยังอยู่ครบ
     await db.withTransactionAsync(async () => {
-      await db.execAsync('DELETE FROM expenses; DELETE FROM categories;');
+      await db.execAsync('DELETE FROM bills; DELETE FROM expenses; DELETE FROM categories; DELETE FROM settings;');
       for (const c of categories) {
         await db.runAsync(
           'INSERT INTO categories (id, name, icon, color, sort_order) VALUES (?, ?, ?, ?, ?)',
@@ -354,6 +390,20 @@ export async function replaceAllData(backupBytes: Uint8Array, mapImageUri: (oldU
           e.created_at,
         );
       }
+      for (const b of bills) {
+        await db.runAsync(
+          'INSERT INTO bills (id, name, amount_satang, day_of_month, category_id, paid_through) VALUES (?, ?, ?, ?, ?, ?)',
+          b.id,
+          b.name,
+          b.amount_satang,
+          b.day_of_month,
+          b.category_id,
+          b.paid_through,
+        );
+      }
+      for (const s of settings) {
+        await db.runAsync('INSERT INTO settings (key, value) VALUES (?, ?)', s.key, s.value);
+      }
     });
     return expenses.length;
   } finally {
@@ -365,4 +415,18 @@ export async function countExpenses(): Promise<number> {
   const db = await getDb();
   const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM expenses');
   return row?.n ?? 0;
+}
+
+/** ค่าตั้งค่า 1 ค่า (null = ยังไม่เคยตั้ง) */
+export async function getSetting(key: string): Promise<string | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM settings WHERE key = ?', key);
+  return row?.value ?? null;
+}
+
+/** ตั้งค่า (null = ลบออก กลับเป็นค่าเริ่มต้น) */
+export async function setSetting(key: string, value: string | null): Promise<void> {
+  const db = await getDb();
+  if (value === null) await db.runAsync('DELETE FROM settings WHERE key = ?', key);
+  else await db.runAsync('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', key, value);
 }

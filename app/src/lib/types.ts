@@ -30,6 +30,7 @@ export type ExpenseList = {
 
 export type ExpenseQuery = {
   month?: string; // "2026-10"
+  day?: string; // "2026-10-27" (ถ้ามี ใช้แทน month)
   q?: string;
   categoryId?: number;
   limit?: number;
