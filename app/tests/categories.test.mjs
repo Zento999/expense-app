@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+const db = await import(new URL('../src/lib/db.ts', import.meta.url).href);
+const bills = await import(new URL('../src/lib/bills.ts', import.meta.url).href);
+let pass = 0; const ok = (n) => { pass++; console.log(`PASS ${n}`); };
+const names = async () => (await db.getCategories()).map((c) => c.name);
+
+const cat = await db.addCategory({ name: 'แมว', icon: '🐱', color: '#F4A7B9' });
+let n = await names();
+assert.equal(n.length, 11); assert.equal(n[9], 'แมว'); assert.equal(n[10], 'อื่นๆ');
+ok('new category goes before อื่นๆ');
+await assert.rejects(db.addCategory({ name: 'แมว', icon: '😺', color: '#000' }), /มีหมวดชื่อ "แมว" อยู่แล้ว/);
+ok('duplicate name gives Thai error');
+await db.updateCategory(cat, { name: 'น้องแมว', icon: '😺', color: '#B9A7E8' });
+assert.equal((await db.getCategories()).find((c) => c.id === cat).icon, '😺');
+ok('update category');
+await db.moveCategory(cat, -1); n = await names();
+assert.equal(n[8], 'น้องแมว'); assert.equal(n[9], 'การศึกษา');
+await db.moveCategory(1, -1); assert.equal((await names())[0], 'อาหาร');
+ok('move up/down, first stays first');
+
+await db.addExpense({ amount: '99', categoryId: cat, source: 'cash', spentAt: new Date() });
+await bills.saveBill(null, { name: 'ทรายแมว', amount: '150', dayOfMonth: 5, categoryId: cat });
+assert.deepEqual(await db.categoryUsage(cat), { expenses: 1, bills: 1 });
+await assert.rejects(db.deleteCategory(cat, null), /ต้องเลือกหมวด/);
+await db.deleteCategory(cat, 10);
+assert.equal((await db.listExpenses({ categoryId: 10 })).total_amount, 99);
+assert.equal((await bills.listBills())[0].category.id, 10);
+assert.equal((await names()).includes('น้องแมว'), false);
+ok('delete moves expenses and bills to chosen category');
+const empty = await db.addCategory({ name: 'ว่าง', icon: '⭐', color: '#FFF' });
+await db.deleteCategory(empty, null);
+ok('delete unused category without moving');
+console.log(`\nALL ${pass} CATEGORY CHECKS PASSED`);
