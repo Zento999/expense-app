@@ -108,6 +108,9 @@ export default function SummaryScreen() {
               {summary && ` · วันนี้ใช้ไป ${formatBaht(summary.today_total)}`}
             </Text>
           </View>
+          <Pressable onPress={() => router.push('/backup')} hitSlop={12} accessibilityLabel="สำรองข้อมูล">
+            <Ionicons name="archive-outline" size={24} color={Colors.text} />
+          </Pressable>
         </View>
 
         <MonthTotalCard

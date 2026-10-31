@@ -288,6 +288,79 @@ export async function getSummary(month: string): Promise<Summary> {
   };
 }
 
+/** ฐานข้อมูลทั้งไฟล์เป็น bytes (ข้อมูลครบแม้เพิ่งบันทึก — ไม่ต้องอ่านไฟล์ .db จาก path) */
+export async function exportDatabase(): Promise<Uint8Array> {
+  const db = await getDb();
+  return db.serializeAsync();
+}
+
+type CategoryFull = Category & { sort_order: number };
+type ExpenseFull = {
+  id: number;
+  amount_satang: number;
+  spent_at: string;
+  source: Source;
+  category_id: number;
+  payee: string | null;
+  note: string | null;
+  image_uri: string | null;
+  created_at: string;
+};
+
+/**
+ * กู้คืน: แทนที่ข้อมูลทั้งหมดด้วยข้อมูลจากไฟล์สำรอง
+ * mapImageUri: path รูปในเครื่องเดิม → path ใหม่ในเครื่องนี้ (มือถือคนละเครื่องเก็บไฟล์คนละที่)
+ */
+export async function replaceAllData(backupBytes: Uint8Array, mapImageUri: (oldUri: string) => string | null): Promise<number> {
+  // เปิดไฟล์สำรองเป็นฐานข้อมูลชั่วคราวในหน่วยความจำ แล้วอัปเกรด schema ให้เท่าแอปตอนนี้ก่อนอ่าน
+  const backup = await SQLite.deserializeDatabaseAsync(backupBytes);
+  try {
+    const row = await backup.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
+    if ((row?.user_version ?? 0) > MIGRATIONS.length) {
+      throw new Error('ไฟล์สำรองมาจากแอปเวอร์ชันใหม่กว่า — อัปเดตแอปก่อนกู้คืน');
+    }
+    await migrate(backup);
+    const categories = await backup.getAllAsync<CategoryFull>('SELECT id, name, icon, color, sort_order FROM categories');
+    const expenses = await backup.getAllAsync<ExpenseFull>(
+      'SELECT id, amount_satang, spent_at, source, category_id, payee, note, image_uri, created_at FROM expenses',
+    );
+
+    const db = await getDb();
+    // ทั้งหมดใน transaction เดียว: พังกลางทาง = ข้อมูลเดิมยังอยู่ครบ
+    await db.withTransactionAsync(async () => {
+      await db.execAsync('DELETE FROM expenses; DELETE FROM categories;');
+      for (const c of categories) {
+        await db.runAsync(
+          'INSERT INTO categories (id, name, icon, color, sort_order) VALUES (?, ?, ?, ?, ?)',
+          c.id,
+          c.name,
+          c.icon,
+          c.color,
+          c.sort_order,
+        );
+      }
+      for (const e of expenses) {
+        await db.runAsync(
+          `INSERT INTO expenses (id, amount_satang, spent_at, source, category_id, payee, note, image_uri, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          e.id,
+          e.amount_satang,
+          e.spent_at,
+          e.source,
+          e.category_id,
+          e.payee,
+          e.note,
+          e.image_uri ? mapImageUri(e.image_uri) : null,
+          e.created_at,
+        );
+      }
+    });
+    return expenses.length;
+  } finally {
+    await backup.closeAsync();
+  }
+}
+
 export async function countExpenses(): Promise<number> {
   const db = await getDb();
   const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM expenses');
