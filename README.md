@@ -1,76 +1,79 @@
 <div align="center">
 
-<img src="app/assets/images/icon.png" width="96" alt="Expense app icon" />
+<img src="app/assets/images/icon.png" width="96" alt="ไอคอนแอป Expense" />
 
-# Expense — offline expense tracker for Android
+# Expense — แอปบันทึกรายจ่ายแบบ offline สำหรับ Android
 
-A personal, privacy-first expense tracker. Every baht, slip photo and setting stays on the phone:
-no server, no account, no cloud.
+แอปบันทึกรายจ่ายส่วนตัวที่ให้ความเป็นส่วนตัวมาก่อน ยอดเงิน รูปสลิป และการตั้งค่าทั้งหมดอยู่ในมือถือเครื่องเดียว
+ไม่มีเซิร์ฟเวอร์ ไม่ต้องสมัครบัญชี ไม่ส่งข้อมูลขึ้น cloud
 
 **React Native · Expo SDK 58 · TypeScript · SQLite**
 
-> 🇹🇭 แอปบันทึกรายจ่ายส่วนตัวบน Android ทำงาน offline ทั้งหมด ข้อมูลและรูปสลิปอยู่ในมือถือเครื่องเดียว
-> มีงบรายเดือน ปฏิทินยอดใช้ บิลประจำ แจ้งเตือน ล็อกด้วยลายนิ้วมือ และสรุปสิ้นเดือน
+*An offline-first, privacy-first expense tracker for Android. No server, no account, no cloud.*
 
 </div>
 
-## Screenshots
+## ภาพหน้าจอ
 
-| Summary | Add an expense | History | By category | Settings |
+| สรุป | เพิ่มรายการ | ประวัติ | แยกตามหมวด | ตั้งค่า |
 |:---:|:---:|:---:|:---:|:---:|
 | <img src="docs/screenshots/summary.png" width="170" /> | <img src="docs/screenshots/add.png" width="170" /> | <img src="docs/screenshots/history.png" width="170" /> | <img src="docs/screenshots/categories.png" width="170" /> | <img src="docs/screenshots/settings.png" width="170" /> |
 
-## Features
+## ฟีเจอร์
 
-- **Fast entry** — numpad for cash, one-tap chips for things you buy often, or attach a slip/receipt photo
-- **Monthly budget** — progress bar, "you can spend ฿X per day until month end", and a mascot whose mood follows your spending pace
-- **Insights** — compares the last 7 days with your 4-week average and points out the category that jumped
-- **Calendar heatmap** — darker days = more spending; tap a day to see its entries
-- **Recurring bills** — rent, internet, phone; shows what is due and records it with one tap
-- **Local notifications** — a nightly nudge only on days you haven't logged anything, plus bill due dates
-- **Month-end recap** — medal (gold / silver / ribbon), top category, heaviest day, longest streak; share as an image
-- **Custom categories** — add, rename, recolor, reorder; deleting one moves its entries elsewhere
-- **Fingerprint lock** — with phone PIN fallback so you can't lock yourself out
-- **Backup and restore** — one `.zip` (database + photos) you can keep in Google Drive or LINE; plus CSV export for Excel
+- **บันทึกเร็ว** — กดตัวเลขสำหรับเงินสด แตะชิป "จ่ายบ่อย" ครั้งเดียวสำหรับของที่ซื้อประจำ หรือแนบรูปสลิป/ใบเสร็จ
+- **งบรายเดือน** — หลอดความคืบหน้า บอกว่า "เหลือใช้ได้วันละ ฿X ถึงสิ้นเดือน" และมีมาสคอตที่เปลี่ยนสีหน้าตามความเร็วในการใช้เงิน
+- **ข้อสังเกตประจำสัปดาห์** — เทียบ 7 วันล่าสุดกับค่าเฉลี่ย 4 สัปดาห์ก่อนหน้า แล้วชี้หมวดที่ใช้พุ่งขึ้น
+- **ปฏิทินสีตามยอดใช้** — วันที่สีเข้มคือวันที่ใช้เยอะ แตะวันไหนก็ดูรายการของวันนั้นได้
+- **บิลประจำเดือน** — ค่าห้อง ค่าเน็ต ค่าโทรศัพท์ แสดงบิลที่ใกล้ถึงกำหนด กดครั้งเดียวก็บันทึกเป็นรายจ่าย
+- **แจ้งเตือนในเครื่อง** — เตือนตอนกลางคืนเฉพาะวันที่ยังไม่ได้บันทึกอะไร และเตือนวันครบกำหนดบิล
+- **สรุปสิ้นเดือน** — เหรียญ (ทอง / เงิน / ริบบิ้น) หมวดที่ใช้มากสุด วันที่ใช้หนักสุด จำนวนวันที่บันทึกต่อเนื่อง แชร์เป็นรูปได้
+- **หมวดหมู่กำหนดเอง** — เพิ่ม เปลี่ยนชื่อ เปลี่ยนสี เรียงลำดับ ถ้าลบหมวด รายการในหมวดนั้นจะย้ายไปหมวดที่เลือก
+- **ล็อกด้วยลายนิ้วมือ** — ใช้ PIN ของมือถือแทนได้ จึงไม่มีทางล็อกตัวเองออกจากแอป
+- **สำรองและกู้คืน** — ไฟล์ `.zip` ไฟล์เดียว (ฐานข้อมูล + รูป) เก็บไว้ใน Google Drive หรือ LINE ได้ และ export เป็น CSV เปิดใน Excel ได้
 
 ## Architecture
 
 ```
-┌──────────── Android phone ────────────┐
-│  Expo Router screens (src/app)        │
+┌──────────── มือถือ Android ───────────┐
+│  หน้าจอ Expo Router (src/app)         │
 │        │                              │
-│  src/lib  ── db.ts      SQLite (expo-sqlite), migrations via PRAGMA user_version
-│           ── stats.ts   budget pace, streak, calendar, insight, quick picks
-│           ── bills.ts   next due date from "paid through" month
-│           ── recap.ts   month-end medal and highlights
+│  src/lib  ── db.ts      SQLite (expo-sqlite), migration ด้วย PRAGMA user_version
+│           ── stats.ts   ความเร็วการใช้งบ, วันต่อเนื่อง, ปฏิทิน, ข้อสังเกต, ปุ่มลัด
+│           ── bills.ts   คำนวณงวดถัดไปจากเดือนที่ "จ่ายถึงแล้ว"
+│           ── recap.ts   เหรียญและไฮไลต์สิ้นเดือน
 │           ── backup.ts  zip: manifest.json + expense.db + receipts/
-│           ── reminders.ts / lock.ts   local notifications, biometrics
+│           ── reminders.ts / lock.ts   แจ้งเตือนในเครื่อง, ลายนิ้วมือ
 │        │                              │
-│  Files: Paths.document/receipts/*.jpg │
+│  ไฟล์รูป: Paths.document/receipts/*.jpg │
 └───────────────────────────────────────┘
 ```
 
-Design decisions worth calling out:
+การตัดสินใจทางเทคนิคที่อยากเล่า:
 
-- **Money is stored as integer satang**, never floats, so `0.1 + 0.2` can't leak into totals.
-- **Dates are stored as UTC ISO strings but grouped by the phone's local day**, so a coffee at 00:10 Bangkok time lands on the right day in the calendar.
-- **Reminders are scheduled day by day for the next 14 days**, not as one repeating alarm, so the app can skip tonight once you've already logged something.
-- **Restore runs in a single transaction**; a broken backup file leaves current data untouched.
+- **เก็บเงินเป็นสตางค์ (จำนวนเต็ม)** ไม่ใช้ float ยอดรวมจึงไม่เจอปัญหาแบบ `0.1 + 0.2 = 0.30000000000000004`
+- **เก็บเวลาเป็น UTC แต่จัดกลุ่มตามวันในเวลาของมือถือ** กาแฟที่ซื้อตอน 00:10 จึงอยู่ถูกวันในปฏิทิน
+- **จองแจ้งเตือนทีละวันล่วงหน้า 14 วัน** แทนการตั้งเตือนซ้ำอัตโนมัติ แอปจึงข้ามคืนนี้ได้ถ้าวันนี้บันทึกไปแล้ว
+- **กู้คืนข้อมูลใน transaction เดียว** ถ้าไฟล์สำรองเสีย ข้อมูลเดิมในเครื่องยังอยู่ครบ
 
-## The pivot: from client–server to offline
+## จุดเปลี่ยน: จาก client–server มาเป็น offline
 
-The first version was a FastAPI + PostgreSQL server in Docker on my PC, reached over Tailscale, with an LLM reading bank slips.
-It worked, but daily use showed the real cost: the PC had to stay on, the VPN dropped, and "can't reach server" became the most common screen.
+เวอร์ชันแรกเป็น FastAPI + PostgreSQL ใน Docker บนคอมของผมเอง มือถือเชื่อมผ่าน Tailscale และใช้ LLM อ่านสลิปธนาคาร
+ระบบทำงานได้ แต่พอใช้จริงทุกวันก็เห็นต้นทุนที่แท้จริง คือต้องเปิดคอมทิ้งไว้ตลอด VPN หลุดบ่อย และหน้าที่เจอบ่อยที่สุดกลายเป็น "ติดต่อเซิร์ฟเวอร์ไม่ได้"
 
-For a single-user app holding private financial data, the server added risk and failure points without adding value, so I rebuilt it offline-first:
-the business logic (monthly summary, same-period comparison) was ported from Python to TypeScript on top of SQLite, slip photos moved to app storage,
-and backup became a user-owned zip file. The server code is still in the git history.
+สำหรับแอปที่มีผู้ใช้คนเดียวและเก็บข้อมูลการเงินส่วนตัว เซิร์ฟเวอร์เพิ่มทั้งความเสี่ยงและจุดที่พังได้ โดยไม่ได้เพิ่มประโยชน์ ผมจึงเขียนใหม่เป็น offline-first:
+
+- ย้าย business logic (สรุปรายเดือน การเทียบกับช่วงเดียวกันของเดือนก่อน) จาก Python มาเป็น TypeScript บน SQLite
+- ย้ายรูปสลิปมาเก็บในพื้นที่ของแอป
+- เปลี่ยนการสำรองข้อมูลเป็นไฟล์ zip ที่ผู้ใช้ถือเอง
+
+โค้ดฝั่งเซิร์ฟเวอร์ยังดูย้อนหลังได้ใน git history
 
 ## Testing
 
-Business logic runs on the PC against real SQLite: a Node resolve hook swaps `expo-sqlite` for Node's built-in `node:sqlite`,
-so the **same source files** the app ships are tested, with no rewrites. 45 checks cover summaries, budget pace, streaks, bill due dates,
-category deletion, recap medals, CSV escaping and backup round-trips.
+Business logic ทดสอบบนคอมกับ SQLite จริง โดยใช้ resolve hook ของ Node สลับ `expo-sqlite` เป็น `node:sqlite` ที่มากับ Node
+เทสต์จึงรัน **ไฟล์ซอร์สชุดเดียวกับที่อยู่ในแอป** ไม่ต้องเขียนโค้ดซ้ำ มี 45 ข้อ ครอบคลุมสรุปรายเดือน ความเร็วการใช้งบ วันต่อเนื่อง
+งวดบิล การลบหมวด เหรียญสิ้นเดือน การ escape ใน CSV และการสำรองแล้วกู้คืน
 
 ```bash
 cd app
@@ -80,7 +83,7 @@ npx tsc --noEmit
 npx expo lint
 ```
 
-## Run it
+## วิธีรัน
 
 ```bash
 cd app
@@ -88,7 +91,7 @@ npx expo start --clear                                          # Expo Go
 npx --yes eas-cli@latest build -p android --profile preview     # APK
 ```
 
-Or download the APK from [Releases](../../releases).
+หรือดาวน์โหลด APK ได้ที่ [Releases](../../releases)
 
 ## License
 
