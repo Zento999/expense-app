@@ -16,9 +16,9 @@ no server, no account, no cloud.
 
 ## Screenshots
 
-| Summary | Quick add | Calendar and bills | Month recap |
+| Summary | Add an expense | By category | Settings |
 |:---:|:---:|:---:|:---:|
-| <img src="docs/screenshots/summary.png" width="200" /> | <img src="docs/screenshots/add-cash.png" width="200" /> | <img src="docs/screenshots/calendar.png" width="200" /> | <img src="docs/screenshots/recap.png" width="200" /> |
+| <img src="docs/screenshots/summary.png" width="200" /> | <img src="docs/screenshots/add.png" width="200" /> | <img src="docs/screenshots/categories.png" width="200" /> | <img src="docs/screenshots/settings.png" width="200" /> |
 
 ## Features
 
