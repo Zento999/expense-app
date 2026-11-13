@@ -16,9 +16,9 @@ no server, no account, no cloud.
 
 ## Screenshots
 
-| Summary | Add an expense | By category | Settings |
-|:---:|:---:|:---:|:---:|
-| <img src="docs/screenshots/summary.png" width="200" /> | <img src="docs/screenshots/add.png" width="200" /> | <img src="docs/screenshots/categories.png" width="200" /> | <img src="docs/screenshots/settings.png" width="200" /> |
+| Summary | Add an expense | History | By category | Settings |
+|:---:|:---:|:---:|:---:|:---:|
+| <img src="docs/screenshots/summary.png" width="170" /> | <img src="docs/screenshots/add.png" width="170" /> | <img src="docs/screenshots/history.png" width="170" /> | <img src="docs/screenshots/categories.png" width="170" /> | <img src="docs/screenshots/settings.png" width="170" /> |
 
 ## Features
 
